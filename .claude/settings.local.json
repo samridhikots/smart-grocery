@@ -1,0 +1,29 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 -c ' *)",
+      "Bash(pip install *)",
+      "Bash(pip3 install *)",
+      "Bash(python3 *)",
+      "Bash(npm install *)",
+      "Bash(npx tsc *)",
+      "Bash(python3 -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload)",
+      "Bash(echo \"Backend PID: $!\")",
+      "Bash(curl -s http://localhost:8000/health)",
+      "Bash(curl -s \"http://localhost:8000/api/insights?user_id=1\")",
+      "Bash(curl -s \"http://localhost:8000/api/overspending?user_id=1\")",
+      "Bash(curl -s -X POST \"http://localhost:8000/api/recommendations\" -H \"Content-Type: application/json\" -d '{\"basket\": [\"Tomato\", \"Onion\", \"Rice\"]}')",
+      "Bash(curl -s \"http://localhost:8000/api/sustainability?user_id=1&months=1\")",
+      "Bash(curl -s \"http://localhost:8000/api/sustainability/items\")",
+      "Bash(curl -s \"http://localhost:8000/api/predict-demand\")",
+      "Bash(npm run *)",
+      "Bash(curl -s \"http://localhost:8000/api/predict-waste\")",
+      "Bash(curl -s \"http://localhost:8000/api/compare-models\")",
+      "Bash(curl -s \"http://localhost:8000/api/purchases?limit=5\")",
+      "Bash(curl -s \"http://localhost:8000/api/items\")",
+      "Bash(curl -s -X POST \"http://localhost:8000/api/optimize-budget\" -H \"Content-Type: application/json\" -d '{\"budget\": 2000, \"household_size\": 3}')",
+      "Bash(curl -s -X POST \"http://localhost:8000/api/recommendations\" -H \"Content-Type: application/json\" -d '{\"basket\":[\"Tomato\",\"Rice\"]}')",
+      "Bash(curl -s \"http://localhost:8000/api/sustainability?user_id=1\")"
+    ]
+  }
+}

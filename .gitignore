@@ -1,0 +1,86 @@
+# ──────────────────────────────────────────────
+# Python / FastAPI backend
+# ──────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+
+# Virtual environments
+.venv/
+venv/
+env/
+.env/
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+*.egg
+
+# Test & coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# SQLite database
+*.db
+*.sqlite3
+
+# ML model artifacts & datasets
+backend/data/
+*.pkl
+*.joblib
+*.h5
+*.pt
+*.pth
+*.onnx
+*.npy
+*.npz
+
+# ──────────────────────────────────────────────
+# Node / Next.js frontend
+# ──────────────────────────────────────────────
+node_modules/
+.next/
+out/
+.cache/
+
+# Build output
+frontend/dist/
+frontend/build/
+
+# TypeScript incremental info
+*.tsbuildinfo
+
+# ──────────────────────────────────────────────
+# Environment & secrets
+# ──────────────────────────────────────────────
+.env
+.env.local
+.env.*.local
+.env.development
+.env.production
+.env.test
+
+# ──────────────────────────────────────────────
+# IDE & OS
+# ──────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# ──────────────────────────────────────────────
+# Misc
+# ──────────────────────────────────────────────
+logs/
+*.log
+get-pip.py
+node_modules/
