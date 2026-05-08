@@ -1,4 +1,5 @@
 import logging
+import threading
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -13,26 +14,36 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
+def _background_init():
+    try:
+        from app.data_pipeline.pipeline import kaggle_data_available, run_kaggle_pipeline
+        from app.utils.helpers import ensure_data_dir
+        ensure_data_dir()
+
+        if kaggle_data_available():
+            logger.info("[startup] Kaggle datasets found — running ingestion pipeline...")
+            run_kaggle_pipeline()
+        else:
+            logger.info("[startup] Kaggle datasets not found — using India-specific synthetic data...")
+            from app.datasets.generator import generate_all_datasets
+            generate_all_datasets()
+
+        train_all_models()
+        logger.info("=== System ready (7 models active) ===")
+    except Exception:
+        logger.exception("[startup] Background initialization failed")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("=== Smart Grocery System (India) — Startup ===")
     create_tables()
 
-    # Choose data source: Kaggle → pipeline, else → India-specific synthetic
-    from app.data_pipeline.pipeline import kaggle_data_available, run_kaggle_pipeline
-    from app.utils.helpers import ensure_data_dir
-    ensure_data_dir()
+    # Run data generation and model training in the background so the port
+    # binds immediately (required for Render's port-scan health check).
+    t = threading.Thread(target=_background_init, daemon=True)
+    t.start()
 
-    if kaggle_data_available():
-        logger.info("[startup] Kaggle datasets found — running ingestion pipeline...")
-        run_kaggle_pipeline()
-    else:
-        logger.info("[startup] Kaggle datasets not found — using India-specific synthetic data...")
-        from app.datasets.generator import generate_all_datasets
-        generate_all_datasets()
-
-    train_all_models()
-    logger.info("=== System ready (7 models active) ===")
     yield
     logger.info("=== Shutting down ===")
 
@@ -50,7 +61,11 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "https://smart-grocery-six.vercel.app",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
