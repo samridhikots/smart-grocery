@@ -24,30 +24,32 @@
 The backend follows a **layered architecture** with clear separation of concerns:
 
 ```
-┌─────────────────────────────────────────────────┐
-│  Routes Layer (HTTP interface)                   │
-│  grocery.py  prediction.py  optimization.py      │
-│  comparison.py                                   │
-├─────────────────────────────────────────────────┤
-│  Services Layer (business logic)                 │
-│  feature_engineering.py  evaluator.py            │
-│  budget_optimizer.py  data_processing.py         │
-├─────────────────────────────────────────────────┤
-│  Models Layer (ML algorithms)                    │
-│  linear_model.py  xgboost_model.py               │
-│  logistic_model.py  random_forest_model.py       │
-├─────────────────────────────────────────────────┤
-│  Data Layer (storage)                            │
-│  generator.py  loader.py  db.py                  │
-├─────────────────────────────────────────────────┤
-│  Utils Layer (shared state)                      │
-│  helpers.py (item catalog)  store.py (registry)  │
-└─────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────┐
+│  Routes Layer (HTTP interface)                            │
+│  grocery.py  prediction.py  optimization.py               │
+│  comparison.py  insights.py  sustainability.py  auth.py   │
+├──────────────────────────────────────────────────────────┤
+│  Services Layer (business logic)                          │
+│  feature_engineering.py  evaluator.py                     │
+│  budget_optimizer.py  data_processing.py                  │
+├──────────────────────────────────────────────────────────┤
+│  Models Layer (ML algorithms)                             │
+│  linear_model.py  xgboost_model.py                        │
+│  logistic_model.py  tabnet_model.py                       │
+├──────────────────────────────────────────────────────────┤
+│  Data Layer (storage)                                     │
+│  generator.py  loader.py  db.py (users + purchases)       │
+├──────────────────────────────────────────────────────────┤
+│  Utils Layer (shared state)                               │
+│  helpers.py (item catalog)  store.py (registry)           │
+│  auth.py (JWT + bcrypt)                                   │
+└──────────────────────────────────────────────────────────┘
 ```
 
 **Key architectural decisions:**
 - No ORM for ML data (raw CSV + pandas for flexibility)
-- SQLAlchemy ORM only for user-generated purchase records
+- SQLAlchemy ORM for both `users` and `purchases` tables
+- JWT authentication (python-jose HS256, 30-day expiry) — user identity derived from token on every protected request
 - Global model registry loaded once at startup
 - Pydantic models for all request/response validation
 
@@ -60,7 +62,7 @@ The backend follows a **layered architecture** with clear separation of concerns
 The application entry point that:
 1. Creates the FastAPI app instance with metadata
 2. Attaches CORS middleware
-3. Registers all 4 routers with `/api` prefix
+3. Registers all 7 routers with `/api` prefix
 4. Orchestrates the startup lifecycle
 
 ### Full Application Lifecycle
@@ -93,10 +95,13 @@ Allows the Next.js frontend (port 3000) to call the FastAPI backend (port 8000) 
 ### Router Prefixes
 
 ```python
-app.include_router(grocery.router,      prefix="/api", tags=["Grocery"])
-app.include_router(prediction.router,   prefix="/api", tags=["Prediction"])
-app.include_router(optimization.router, prefix="/api", tags=["Optimization"])
-app.include_router(comparison.router,   prefix="/api", tags=["Comparison"])
+app.include_router(auth_routes.router,    prefix="/api", tags=["Auth"])
+app.include_router(grocery.router,        prefix="/api", tags=["Grocery"])
+app.include_router(prediction.router,     prefix="/api", tags=["Prediction"])
+app.include_router(optimization.router,   prefix="/api", tags=["Optimization"])
+app.include_router(comparison.router,     prefix="/api", tags=["Comparison"])
+app.include_router(insights.router,       prefix="/api", tags=["Insights"])
+app.include_router(sustainability.router, prefix="/api", tags=["Sustainability"])
 ```
 
 ---
@@ -116,17 +121,33 @@ engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 - `check_same_thread=False` — required because FastAPI uses a thread pool
 - Database file created at: `backend/grocery.db`
 
+### Schema: UserRecord Table
+
+```sql
+CREATE TABLE users (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    name                TEXT    NOT NULL,
+    email               TEXT    NOT NULL UNIQUE,
+    password_hash       TEXT    NOT NULL,      -- bcrypt hash
+    household_size      INTEGER DEFAULT 3,
+    monthly_budget      REAL    DEFAULT 3000.0,
+    dietary_prefs       TEXT    DEFAULT '',
+    onboarding_complete INTEGER DEFAULT 0,     -- 0=False, 1=True
+    created_at          TEXT    NOT NULL       -- ISO timestamp
+);
+```
+
 ### Schema: PurchaseRecord Table
 
 ```sql
 CREATE TABLE purchases (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id       INTEGER DEFAULT 1,
-    item          TEXT NOT NULL,
-    category      TEXT NOT NULL,
-    quantity      REAL NOT NULL,
-    price         REAL NOT NULL,
-    purchase_date TEXT NOT NULL
+    user_id       INTEGER NOT NULL,            -- FK → users.id (from JWT)
+    item          TEXT    NOT NULL,
+    category      TEXT    NOT NULL,
+    quantity      REAL    NOT NULL,
+    price         REAL    NOT NULL,
+    purchase_date TEXT    NOT NULL
 );
 ```
 
@@ -330,15 +351,43 @@ backend/app/models/
 
 ## 7. Routes Layer
 
+### auth.py
+
+**File:** `backend/app/routes/auth.py`  
+**Prefix:** `/api/auth`  
+**Auth:** Public endpoints return tokens; protected endpoints require `Authorization: Bearer <token>`
+
+```
+POST /api/auth/signup       → Create account, return JWT + user object
+POST /api/auth/login        → Verify credentials, return JWT + user object
+GET  /api/auth/me           → Return current user (requires JWT)
+PUT  /api/auth/onboarding   → Save household_size / monthly_budget / dietary_prefs
+```
+
+**Signup/login response shape:**
+```json
+{
+  "access_token": "eyJ...",
+  "token_type": "bearer",
+  "user": {
+    "id": 1, "name": "Samridhi", "email": "...",
+    "household_size": 3, "monthly_budget": 3000.0,
+    "dietary_prefs": "", "onboarding_complete": false
+  }
+}
+```
+
 ### grocery.py
 
 **File:** `backend/app/routes/grocery.py`  
-**Prefix:** `/api`
+**Prefix:** `/api`  
+**Auth:** All purchase endpoints require `Authorization: Bearer <token>`. `user_id` is derived from the JWT — never accepted as a body field or query param.
 
 ```
-POST /api/add-purchase     → Record a purchase to SQLite
-GET  /api/purchases        → List purchases (with optional user_id filter)
-GET  /api/items            → List all 30 catalog items
+POST   /api/add-purchase        → Record a purchase (user_id from JWT)
+GET    /api/purchases           → List purchases for the authenticated user
+DELETE /api/purchases/{id}      → Delete a purchase (ownership check enforced)
+GET    /api/items               → List all 30 catalog items (no auth required)
 ```
 
 **Pydantic schemas:**
@@ -349,7 +398,7 @@ class PurchaseCreate(BaseModel):
     quantity:      float  # Field(gt=0)
     price:         float  # Field(gt=0)
     purchase_date: str    # "YYYY-MM-DD"
-    user_id:       int = 1
+    # user_id intentionally absent — comes from JWT
 
 class PurchaseResponse(BaseModel):
     id:            int
@@ -431,6 +480,43 @@ Reads directly from `model_store["demand"]["metrics"]` and `model_store["waste"]
 
 ## 8. Utils Layer
 
+### auth.py
+
+**File:** `backend/app/utils/auth.py`
+
+JWT and password utilities used by all protected routes:
+
+```python
+SECRET_KEY = "smart-grocery-india-jwt-secret-2024"
+ALGORITHM  = "HS256"
+ACCESS_TOKEN_EXPIRE_DAYS = 30
+
+def hash_password(password: str) -> str:
+    return _bcrypt.hashpw(password.encode("utf-8"), _bcrypt.gensalt()).decode("utf-8")
+
+def verify_password(plain: str, hashed: str) -> bool:
+    return _bcrypt.checkpw(plain.encode("utf-8"), hashed.encode("utf-8"))
+
+def create_access_token(user_id: int) -> str:
+    expire = datetime.now(timezone.utc) + timedelta(days=ACCESS_TOKEN_EXPIRE_DAYS)
+    return jwt.encode({"sub": str(user_id), "exp": expire}, SECRET_KEY, algorithm=ALGORITHM)
+
+def get_current_user_id(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+) -> int:
+    # Decodes JWT → returns user_id (int) or raises 401
+```
+
+**Dependency injection pattern** — routes use `user_id: int = Depends(get_current_user_id)` to automatically authenticate every request:
+
+```python
+@router.get("/purchases")
+def get_purchases(user_id: int = Depends(get_current_user_id), db: Session = Depends(get_db)):
+    return db.query(PurchaseRecord).filter(PurchaseRecord.user_id == user_id).all()
+```
+
+**bcrypt note:** Uses `bcrypt` directly (`import bcrypt as _bcrypt`), not `passlib`. This avoids the `bcrypt.__about__` AttributeError introduced in bcrypt 4.x that breaks passlib 1.7.4.
+
 ### helpers.py
 
 **File:** `backend/app/utils/helpers.py`
@@ -438,7 +524,9 @@ Reads directly from `model_store["demand"]["metrics"]` and `model_store["waste"]
 Contains:
 - **`ITEMS` dict:** The authoritative 30-item catalog with all static properties
 - **`SEASONAL_MULTIPLIERS` dict:** Per-item monthly demand multipliers for 13 items
-- **`FESTIVAL_MONTHS` list:** `[1, 3, 10, 11]`
+- **`FESTIVAL_MONTHS` list:** `[1, 3, 8, 10, 11]` (Jan/Makar Sankranti, Mar/Holi, Aug/Raksha Bandhan, Oct/Dussehra, Nov/Diwali)
+- **`MONSOON_MONTHS` list:** `[6, 7, 8, 9]`
+- **`SUMMER_MONTHS` list:** `[4, 5, 6]`
 - **`get_seasonal_factor(item, month)`:** Returns seasonal multiplier, defaulting to festival boost or 1.0
 - **`ensure_data_dir()`:** Creates `backend/data/` if it doesn't exist
 - **`DATA_DIR`:** Absolute path to the data directory

@@ -1,12 +1,106 @@
 "use client";
 import { useEffect, useState, useCallback } from "react";
 import { api, DemandPrediction, WasteAlert, OptimizationResult, OptimizedItem } from "@/services/api";
-import { LineChartComponent, BarChartComponent } from "@/components/Chart";
+import { BarChartComponent } from "@/components/Chart";
 import Table from "@/components/Table";
-import { TrendingUp, Trash2, DollarSign, Star, Copy, Share2, Check } from "lucide-react";
+import { TrendingUp, Trash2, DollarSign, Star, Copy, Share2, Check, HelpCircle } from "lucide-react";
 import { RISK_COLORS, CATEGORIES } from "@/lib/constants";
 
 type Tab = "demand" | "waste" | "budget";
+
+type ReasonBadge = { label: string; color: string };
+
+function explainDemand(pred: DemandPrediction): ReasonBadge[] {
+  const reasons: ReasonBadge[] = [];
+  if (pred.is_festival_month) reasons.push({ label: "Festival season boost", color: "bg-orange-100 text-orange-700" });
+  if (pred.seasonal_factor > 1.2) reasons.push({ label: `${pred.seasonal_factor.toFixed(1)}× seasonal demand`, color: "bg-blue-100 text-blue-700" });
+  if (pred.confidence >= 0.85) reasons.push({ label: "High confidence", color: "bg-green-100 text-green-700" });
+  if (pred.days_until_next <= 3) reasons.push({ label: "Urgent — stock low", color: "bg-red-100 text-red-700" });
+  if (pred.predicted_quantity_xgboost > pred.historical_avg * 1.15) reasons.push({ label: "Demand trending up", color: "bg-purple-100 text-purple-700" });
+  if (pred.predicted_quantity_xgboost < pred.historical_avg * 0.85) reasons.push({ label: "Demand trending down", color: "bg-gray-100 text-gray-600" });
+  return reasons;
+}
+
+function DemandCard({ pred }: { pred: DemandPrediction }) {
+  const [showWhy, setShowWhy] = useState(false);
+  const reasons = explainDemand(pred);
+  const urgencyColor = pred.days_until_next <= 2 ? "text-red-600" : pred.days_until_next <= 5 ? "text-orange-500" : "text-gray-500";
+
+  return (
+    <div className="p-4 border border-gray-200 rounded-xl hover:border-green-300 transition-colors bg-white">
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-semibold text-gray-800">{pred.item}</span>
+            <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700 font-medium">{pred.category}</span>
+            {pred.brand && pred.brand !== "Local" && (
+              <span className="text-xs text-gray-400">{pred.brand}</span>
+            )}
+          </div>
+          <p className={`text-xs mt-1 font-medium ${urgencyColor}`}>{pred.urgency_message}</p>
+        </div>
+        <div className="text-right flex-shrink-0">
+          <p className="text-sm font-bold text-gray-800">×{pred.recommended_quantity.toFixed(1)}</p>
+          <p className="text-xs text-gray-500">₹{pred.estimated_cost_inr.toFixed(0)}</p>
+        </div>
+      </div>
+
+      {/* Confidence bar */}
+      <div className="flex items-center gap-2 mt-2">
+        <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+          <div className="h-full bg-green-500 rounded-full" style={{ width: `${pred.confidence * 100}%` }} />
+        </div>
+        <span className="text-xs text-gray-400">{(pred.confidence * 100).toFixed(0)}%</span>
+      </div>
+
+      {/* Explain badges */}
+      {reasons.length > 0 && (
+        <div className="flex flex-wrap gap-1 mt-2">
+          {reasons.map((r, i) => (
+            <span key={i} className={`text-xs px-2 py-0.5 rounded-full font-medium ${r.color}`}>{r.label}</span>
+          ))}
+        </div>
+      )}
+
+      {/* Why button */}
+      <button
+        onClick={() => setShowWhy(!showWhy)}
+        className="flex items-center gap-1 mt-2 text-xs text-green-600 hover:text-green-800 font-medium"
+      >
+        <HelpCircle className="w-3.5 h-3.5" /> Why this recommendation?
+      </button>
+
+      {showWhy && (
+        <div className="mt-2 p-3 bg-gray-50 rounded-lg border border-gray-200 text-xs space-y-1.5">
+          <div className="flex justify-between">
+            <span className="text-gray-500">Historical avg</span>
+            <span className="font-medium text-gray-700">×{pred.historical_avg.toFixed(2)}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-gray-500">XGBoost prediction</span>
+            <span className="font-medium text-gray-700">×{pred.predicted_quantity_xgboost.toFixed(2)}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-gray-500">Seasonal factor</span>
+            <span className="font-medium text-gray-700">{pred.seasonal_factor.toFixed(2)}×</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-gray-500">Festival month</span>
+            <span className="font-medium text-gray-700">{pred.is_festival_month ? "Yes" : "No"}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-gray-500">Unit price</span>
+            <span className="font-medium text-gray-700">₹{pred.unit_price_inr.toFixed(0)}/unit</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-gray-500">Estimated cost</span>
+            <span className="font-medium text-green-700">₹{pred.estimated_cost_inr.toFixed(0)}</span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function RecommendationsPage() {
   const [tab, setTab] = useState<Tab>("demand");
@@ -83,23 +177,6 @@ export default function RecommendationsPage() {
     "LR Probability": parseFloat((w.waste_probability_logistic * 100).toFixed(1)),
   }));
 
-  const demandCols = [
-    { key: "item", header: "Item" },
-    { key: "category", header: "Category" },
-    { key: "recommended_quantity", header: "Recommended Qty", render: (r: DemandPrediction) => r.recommended_quantity.toFixed(2) },
-    { key: "historical_avg", header: "Historical Avg", render: (r: DemandPrediction) => r.historical_avg.toFixed(2) },
-    { key: "unit_price_inr", header: "Unit Price (₹)", render: (r: DemandPrediction) => `₹${r.unit_price_inr.toFixed(2)}` },
-    { key: "confidence", header: "Confidence", render: (r: DemandPrediction) => (
-      <div className="flex items-center gap-2">
-        <div className="w-16 h-1.5 bg-gray-200 rounded-full overflow-hidden">
-          <div className="h-full bg-green-500 rounded-full" style={{ width: `${r.confidence * 100}%` }} />
-        </div>
-        <span className="text-xs">{(r.confidence * 100).toFixed(0)}%</span>
-      </div>
-    )},
-    { key: "days_until_next", header: "Buy In (days)" },
-  ];
-
   const wasteCols = [
     { key: "item", header: "Item" },
     { key: "category", header: "Category" },
@@ -165,9 +242,11 @@ export default function RecommendationsPage() {
                   height={320}
                 />
               </div>
-              <div className="card">
-                <h2 className="text-lg font-semibold text-gray-800 mb-4">All Item Predictions</h2>
-                <Table columns={demandCols as never} data={demand as never} />
+              <div>
+                <h2 className="text-lg font-semibold text-gray-800 mb-3">All Item Predictions — with Explanations</h2>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {demand.map((pred) => <DemandCard key={pred.item} pred={pred} />)}
+                </div>
               </div>
             </div>
           )}

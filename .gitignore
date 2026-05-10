@@ -84,3 +84,4 @@ logs/
 *.log
 get-pip.py
 node_modules/
+images

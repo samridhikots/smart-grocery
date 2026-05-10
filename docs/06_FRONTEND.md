@@ -26,10 +26,10 @@ frontend/
 ├── app/                    ← Next.js App Router (pages + layouts)
 │   ├── layout.tsx          ← Root layout: AuthProvider → Navbar → AuthGuard → OnboardingModal
 │   ├── globals.css         ← Tailwind base + custom components
-│   ├── page.tsx            ← Public landing page (/)
+│   ├── page.tsx            ← Public landing: consumer-focused hero + "How it works"
 │   ├── auth/
 │   │   ├── signin/         ← /auth/signin  (public)
-│   │   └── signup/         ← /auth/signup  (public)
+│   │   └── signup/         ← /auth/signup  (public, benefit nudge cards)
 │   ├── dashboard/          ← /dashboard    (protected)
 │   ├── add/                ← /add          (protected)
 │   ├── recommendations/    ← /recommendations (protected)
@@ -37,12 +37,12 @@ frontend/
 │   ├── sustainability/     ← /sustainability (protected)
 │   └── comparison/         ← /comparison   (protected)
 ├── components/             ← Shared React components
-│   ├── Navbar.tsx          ← Shows user name + logout when authenticated
+│   ├── Navbar.tsx          ← Auth-aware: user avatar + name + sign-out / sign-in buttons
 │   ├── AuthGuard.tsx       ← Redirects unauthenticated users to /auth/signin
-│   ├── OnboardingModal.tsx ← 3-step household setup shown after signup
-│   ├── Chart.tsx           ← Recharts wrapper components
+│   ├── OnboardingModal.tsx ← 3-step wizard: household size → budget → dietary prefs
+│   ├── Chart.tsx           ← BarChartComponent, LineChartComponent, RadarChartComponent
 │   ├── Table.tsx           ← Generic typed table
-│   └── Form.tsx            ← Purchase input form
+│   └── Form.tsx            ← Fuzzy-search autocomplete purchase form
 ├── contexts/
 │   └── AuthContext.tsx     ← Auth state (user, token, login, signup, logout, onboarding)
 ├── services/
@@ -64,15 +64,15 @@ frontend/
 
 | URL | File | Auth | Description |
 |-----|------|------|-------------|
-| `/` | `app/page.tsx` | Public | Consumer-friendly landing page |
-| `/auth/signin` | `app/auth/signin/page.tsx` | Public | Sign-in form |
-| `/auth/signup` | `app/auth/signup/page.tsx` | Public | Sign-up form |
-| `/dashboard` | `app/dashboard/page.tsx` | Protected | Live dashboard with charts |
-| `/add` | `app/add/page.tsx` | Protected | Purchase recording form |
-| `/recommendations` | `app/recommendations/page.tsx` | Protected | Demand, waste, budget tabs |
-| `/insights` | `app/insights/page.tsx` | Protected | Top 3 Actions + all ML insights |
-| `/sustainability` | `app/sustainability/page.tsx` | Protected | CO₂ tracker, swap suggestions |
-| `/comparison` | `app/comparison/page.tsx` | Protected | Model comparison charts |
+| `/` | `app/page.tsx` | Public | Consumer landing: hero, How it works, ML section |
+| `/auth/signin` | `app/auth/signin/page.tsx` | Public | Email + password sign-in |
+| `/auth/signup` | `app/auth/signup/page.tsx` | Public | Sign-up with benefit nudge cards |
+| `/dashboard` | `app/dashboard/page.tsx` | Protected | Stats, budget bar, spend trend, charts, tables |
+| `/add` | `app/add/page.tsx` | Protected | Fuzzy-search purchase form |
+| `/recommendations` | `app/recommendations/page.tsx` | Protected | Demand (explainable cards), waste, budget + WhatsApp share |
+| `/insights` | `app/insights/page.tsx` | Protected | Top 3 Actions + spend trend with anomaly markers |
+| `/sustainability` | `app/sustainability/page.tsx` | Protected | CO₂ tracker, eco scores, smart swap suggestions |
+| `/comparison` | `app/comparison/page.tsx` | Protected | Model comparison: Ridge vs XGBoost, Logistic vs TabNet |
 
 **Auth guard:** `AuthGuard` (client component) checks `useAuth().user` on every render. If the route is protected and the user is not logged in, it calls `router.replace("/auth/signin")`.
 
@@ -120,28 +120,34 @@ No API calls — fully static.
 ### Dashboard (`app/dashboard/page.tsx`)
 
 **Type:** Client Component  
-**APIs called:** `GET /api/purchases`, `GET /api/predict-waste`
-
-**State:**
-```typescript
-const [purchases, setPurchases] = useState<Purchase[]>([]);
-const [waste, setWaste] = useState<WasteAlert[]>([]);
-const [loading, setLoading] = useState(true);
-```
+**APIs called:** `GET /api/purchases` (200 records), `GET /api/predict-waste`  
+**Auth:** Uses `useAuth()` for user name and `user.monthly_budget` for the budget bar.
 
 **Sections:**
 
-1. **Stats Row (4 cards)**
-   - Total purchases recorded
-   - Total amount spent ($)
-   - High-waste risk item count
-   - Average freshness score (1 - waste_probability_rf)
+1. **Header** — `"{user.firstName}'s household overview"` personalised subtitle
 
-2. **Charts Row (2 charts)**
+2. **Stats Row (4 cards)**
+   - Total purchases recorded
+   - Total amount spent (₹)
+   - High-waste risk item count
+   - Average freshness score (1 − waste_probability_tabnet)
+
+3. **Monthly Budget Progress Bar (`BudgetBar` component)**
+   - Current month spend vs `user.monthly_budget` from onboarding
+   - Colour: green (< 70%), yellow (70–90%), red (> 90%)
+   - Shows "₹X left" or "₹X over" badge
+
+4. **Charts Row (2 charts)**
    - Bar chart: Spending by category
    - Bar chart: Waste risk distribution (High / Medium / Low counts)
 
-3. **Tables Row (2 tables)**
+5. **Month-over-Month Spend Trend (LineChartComponent)**
+   - Groups all purchases by `purchase_date.slice(0, 7)` (YYYY-MM)
+   - Sorted chronologically; rendered only when ≥ 2 months of data exist
+   - Green line, title "Month-over-Month Spend Trend"
+
+6. **Tables Row (2 tables)**
    - Recent purchases (last 10, with category color badge)
    - Waste risk alerts (filtered to non-Low risk items)
 
@@ -187,14 +193,28 @@ useEffect(() => {
 
 #### Demand Tab
 
-- Bar chart: XGBoost vs Linear vs Historical quantities per item
-- Table: All 30 items with predicted quantities, confidence bars, unit price, days-until-next
+- Bar chart: XGBoost vs Linear vs Historical quantities per item (top 12)
+- **Explainable card grid** (`DemandCard` component) replacing the plain table:
+  - Item name, category badge, brand, urgency message (colour-coded by `days_until_next`)
+  - Confidence progress bar
+  - Auto-generated **explanation badges** from API fields:
+    - `is_festival_month = 1` → "Festival season boost" (orange)
+    - `seasonal_factor > 1.2` → "1.4× seasonal demand" (blue)
+    - `confidence ≥ 0.85` → "High confidence" (green)
+    - `days_until_next ≤ 3` → "Urgent — stock low" (red)
+    - `xgboost > historical × 1.15` → "Demand trending up" (purple)
+  - **"Why this recommendation?"** expand button reveals a key-value breakdown table (historical avg, XGBoost pred, seasonal factor, festival flag, unit price, estimated cost)
 
-**Confidence bar component:**
-```tsx
-<div className="w-16 h-1.5 bg-gray-200 rounded-full overflow-hidden">
-  <div className="h-full bg-green-500" style={{ width: `${confidence * 100}%` }} />
-</div>
+```typescript
+function explainDemand(pred: DemandPrediction): ReasonBadge[] {
+  const reasons = [];
+  if (pred.is_festival_month)                          reasons.push({ label: "Festival season boost", ... });
+  if (pred.seasonal_factor > 1.2)                     reasons.push({ label: `${factor}× seasonal demand`, ... });
+  if (pred.confidence >= 0.85)                        reasons.push({ label: "High confidence", ... });
+  if (pred.days_until_next <= 3)                      reasons.push({ label: "Urgent — stock low", ... });
+  if (pred.predicted_quantity_xgboost > hist * 1.15)  reasons.push({ label: "Demand trending up", ... });
+  return reasons;
+}
 ```
 
 #### Waste Tab
@@ -205,10 +225,12 @@ useEffect(() => {
 
 #### Budget Tab
 
-- Form inputs: Budget ($), Household size, Category filter toggles
+- Form inputs: Budget (₹), Household size, Category filter toggles
 - "Optimize" button triggers `POST /api/optimize-budget`
 - Results:
   - 4 stat cards (total spent, savings, items count, optimization score)
+  - **WhatsApp Share** button — opens `https://wa.me/?text=` with a formatted list
+  - **Copy list** button — copies text to clipboard with 2-second "Copied!" feedback
   - Sorted shopping list table
 
 ---
@@ -307,28 +329,101 @@ Renders a styled table with:
 
 ### Form.tsx (PurchaseForm)
 
-A controlled form for adding purchase records:
+A fuzzy-search autocomplete purchase form — replaces the previous two-dropdown (category → item) UI.
 
 **State:**
 ```typescript
 interface FormState {
   item: string;
-  category: string;
-  quantity: string;   // string to work with input[type=number]
+  category: string;   // auto-filled on item selection
+  quantity: string;
   price: string;
   purchase_date: string;
 }
+const [query, setQuery] = useState("");   // search input text
+const [open, setOpen] = useState(false);  // dropdown visibility
 ```
 
-**Cascading select logic:**
-When `category` changes, `item` is reset to empty and the item dropdown repopulates from `ITEMS_BY_CATEGORY[category]`.
+**Autocomplete logic:**
+```typescript
+const ALL_ITEMS = Object.entries(ITEMS_BY_CATEGORY).flatMap(
+  ([category, items]) => items.map((item) => ({ item, category }))
+);
+
+const filtered = query.length > 0
+  ? ALL_ITEMS.filter(({ item }) =>
+      item.toLowerCase().includes(query.toLowerCase())
+    ).slice(0, 8)
+  : [];
+```
+
+- Typing "tom" matches "Tomato" instantly; "dal" matches "Toor Dal", "Chana Dal", "Moong Dal"
+- Selecting an item auto-fills both `item` and `category`; the selected category appears as a colour badge inside the input
+- Dropdown closes on outside click (mousedown listener)
+- Editing the text after a selection clears the choice so the user must re-pick (prevents silent category mismatch)
 
 **Submission flow:**
-1. Validate non-empty fields client-side
+1. Validate: `item`, `category`, `quantity`, `price` must all be set
 2. Parse quantity/price to float
-3. `api.addPurchase(data)` → POST to backend
+3. `api.addPurchase(data)` → POST to backend (user_id comes from JWT, not form)
 4. Show success/error message
-5. On success: reset form, call `onSuccess()` callback
+5. On success: reset form + search query, call `onSuccess()` callback
+
+### AuthContext.tsx
+
+**File:** `frontend/contexts/AuthContext.tsx`
+
+Global auth state provider — wraps the entire app in `layout.tsx`.
+
+```typescript
+interface AuthContextType {
+  user: User | null;
+  isLoading: boolean;
+  login:              (email, password) => Promise<void>;
+  signup:             (name, email, password) => Promise<void>;
+  logout:             () => void;
+  completeOnboarding: (data) => Promise<void>;
+  updateUser:         (user: User) => void;
+}
+```
+
+On mount: reads `sg_token` from `localStorage`, calls `GET /api/auth/me` to rehydrate the `user` object. Exposes `login` / `signup` / `logout` functions that update both the token in `localStorage` and the in-memory `user` state.
+
+### AuthGuard.tsx
+
+**File:** `frontend/components/AuthGuard.tsx`
+
+Client component that enforces route protection:
+
+```typescript
+const PUBLIC_PATHS = ["/", "/auth/signin", "/auth/signup"];
+
+export default function AuthGuard({ children }) {
+  const { user, isLoading } = useAuth();
+  const pathname = usePathname();
+
+  if (isLoading) return <Spinner />;
+  if (!user && !PUBLIC_PATHS.includes(pathname)) {
+    router.replace("/auth/signin");
+    return null;
+  }
+  return <>{children}</>;
+}
+```
+
+### OnboardingModal.tsx
+
+**File:** `frontend/components/OnboardingModal.tsx`
+
+3-step wizard shown once after signup (`user.onboarding_complete === false`):
+
+| Step | Field | UI |
+|------|-------|----|
+| 1 | Household size | +/− stepper (1–15) |
+| 2 | Monthly budget | ₹ number input + preset buttons (₹1500 / 3000 / 5000 / 8000) |
+| 3 | Dietary preferences | Toggle chips (Vegetarian / Non-Vegetarian / Vegan / Jain / Gluten-Free) |
+
+Submits `PUT /api/auth/onboarding` → calls `completeOnboarding()` from AuthContext → modal disappears permanently.
 
 ### Chart.tsx
 
@@ -392,45 +487,53 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 }
 ```
 
+**Token injection:** On every `request()` call, reads `localStorage.getItem("sg_token")` and adds `Authorization: Bearer <token>` to the headers automatically. Public endpoints (auth signup/login) use raw `fetch` before the token is stored.
+
 **Error handling:** Non-2xx responses throw an `Error` with the server's `detail` message.
+
+**Auth functions (`authApi`):**
+```typescript
+export const authApi = {
+  signup: (name, email, password) =>
+    fetch(`${BASE_URL}/auth/signup`, { method: "POST", body: JSON.stringify({name, email, password}) })
+      .then(r => r.json()),
+  login: (email, password) =>
+    fetch(`${BASE_URL}/auth/login`, { method: "POST", body: JSON.stringify({email, password}) })
+      .then(r => r.json()),
+  me: () => request<User>("/auth/me"),
+  onboarding: (data) => request<User>("/auth/onboarding", { method: "PUT", body: JSON.stringify(data) }),
+};
+```
 
 **All API functions:**
 
 ```typescript
 export const api = {
-  getPurchases: (limit = 50) =>
-    request<Purchase[]>(`/purchases?limit=${limit}`),
+  // Auth-protected
+  getPurchases:      (limit = 200) => request<Purchase[]>(`/purchases?limit=${limit}`),
+  addPurchase:       (data)        => request<Purchase>("/add-purchase", { method: "POST", body: JSON.stringify(data) }),
+  deletePurchase:    (id)          => request<void>(`/purchases/${id}`, { method: "DELETE" }),
+  getInsights:       ()            => request<InsightsResponse>("/insights"),
+  getOverspending:   ()            => request<OverspendingResult>("/overspending"),
+  getSustainability: (months = 1)  => request<SustainabilityResult>(`/sustainability?months=${months}`),
 
-  addPurchase: (data: PurchaseCreate) =>
-    request<Purchase>("/add-purchase", { method: "POST", body: JSON.stringify(data) }),
-
-  getItems: () =>
-    request<Item[]>("/items"),
-
-  predictDemand: () =>
-    request<DemandResponse>("/predict-demand"),
-
-  predictWaste: () =>
-    request<WasteResponse>("/predict-waste"),
-
-  optimizeBudget: (budget, household_size, preferred_categories?) =>
+  // No auth required
+  getItems:          ()            => request<Item[]>("/items"),
+  predictDemand:     ()            => request<DemandResponse>("/predict-demand"),
+  predictWaste:      ()            => request<WasteResponse>("/predict-waste"),
+  optimizeBudget:    (budget, household_size, preferred_categories?) =>
     request<OptimizationResult>("/optimize-budget", {
-      method: "POST",
-      body: JSON.stringify({ budget, household_size, preferred_categories }),
+      method: "POST", body: JSON.stringify({ budget, household_size, preferred_categories }),
     }),
-
-  generatePlan: (household_size = 3) =>
-    request<WeekPlanResponse>(`/generate-plan?household_size=${household_size}`),
-
-  compareModels: () =>
-    request<ComparisonResult>("/compare-models"),
+  compareModels:     ()            => request<ComparisonResult>("/compare-models"),
+  getSustainabilityItems: ()       => request<SustainabilityItem[]>("/sustainability/items"),
 };
 ```
 
 **Changing the backend URL:**  
-Set `NEXT_PUBLIC_API_URL` in a `.env.local` file:
+Set `NEXT_PUBLIC_API_URL` in `.env`:
 ```
-NEXT_PUBLIC_API_URL=http://localhost:8000/api
+NEXT_PUBLIC_API_URL=https://your-backend.onrender.com/api
 ```
 
 ---
@@ -602,27 +705,53 @@ Used on: Comparison page (waste model 5-metric comparison)
 All API response types are defined in `services/api.ts`:
 
 ```typescript
+// Auth types
+export interface User {
+  id: number; name: string; email: string;
+  household_size: number; monthly_budget: number;
+  dietary_prefs: string; onboarding_complete: boolean;
+}
+export interface AuthResponse { access_token: string; token_type: string; user: User; }
+
 // Core data types
 export interface Purchase { id, user_id, item, category, quantity, price, purchase_date }
-export interface DemandPrediction { item, category, predicted_quantity_xgboost,
-  predicted_quantity_linear, historical_avg, confidence, recommended_quantity,
-  unit_price, days_until_next, seasonal_factor }
-export interface WasteAlert { item, category, waste_probability_rf,
-  waste_probability_logistic, risk_level, days_until_expiry, recommendation, shelf_life }
+export interface PurchaseCreate { item, category, quantity, price, purchase_date }
+
+export interface DemandPrediction {
+  item, category, brand,
+  predicted_quantity_xgboost, predicted_quantity_linear,
+  historical_avg, confidence, recommended_quantity,
+  unit_price_inr, estimated_cost_inr,
+  days_until_next, seasonal_factor,
+  is_festival_month,   // 0 or 1 — used for explainability badges
+  urgency_message,
+}
+export interface WasteAlert {
+  item, category, brand,
+  waste_probability_tabnet, waste_probability_logistic,
+  risk_level: "High" | "Medium" | "Low",
+  days_until_expiry, shelf_life_days, recommendation, is_perishable,
+}
 export interface OptimizedItem { item, category, quantity, unit_price, total_cost,
   priority_score, nutrition_score }
 export interface OptimizationResult { total_cost, budget, savings, optimization_score,
   items_count, items: OptimizedItem[] }
 
 // Comparison types
-export interface ModelMetrics {
-  split; mae?; rmse?; r2?; directional_accuracy?;  // regression
-  accuracy?; precision?; recall?; f1?; roc_auc?;  // classification
-}
 export interface ComparisonResult {
-  demand_prediction: { legacy, modern, winner, improvement, ... }
-  waste_prediction: { legacy, modern, winner, improvement, ... }
-  feature_importance: { demand_xgboost, waste_rf }
+  demand_prediction: { legacy, modern, winner, improvement }
+  waste_prediction:  { legacy, modern, winner, improvement }
+  feature_importance: { demand_xgboost, waste_tabnet }
+}
+
+// Sustainability
+export interface SustainabilityResult {
+  total_co2_kg_estimate, avg_eco_score, plastic_packaging_pct,
+  non_biodegradable_pct, swap_suggestions: SwapSuggestion[]
+}
+export interface SustainabilityItem {
+  item, category, eco_score, co2_per_unit_g,
+  plastic_packaging, is_biodegradable
 }
 ```
 

@@ -3,7 +3,10 @@ import { useEffect, useState, useCallback } from "react";
 import { api, Insight, OverspendingResult } from "@/services/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { Lightbulb, AlertCircle, TrendingUp, Info, ChevronDown, RefreshCw, Zap } from "lucide-react";
-import { BarChartComponent } from "@/components/Chart";
+import {
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
+  ResponsiveContainer,
+} from "recharts";
 
 const SEVERITY_STYLES: Record<string, string> = {
   critical: "border-l-4 border-red-500 bg-red-50",
@@ -95,23 +98,58 @@ function InsightCard({ insight }: { insight: Insight }) {
   );
 }
 
-function SpendingHistory({ history }: { history: { month: string; spend: number; is_anomaly: boolean }[] }) {
-  const chartData = history.map((h) => ({
-    month: h.month,
-    spend: h.spend,
-    anomaly: h.is_anomaly ? h.spend : 0,
-  }));
+type HistoryPoint = { month: string; spend: number; is_anomaly: boolean };
+
+function AnomalyDot(props: { cx?: number; cy?: number; payload?: HistoryPoint }) {
+  const { cx = 0, cy = 0, payload } = props;
+  if (payload?.is_anomaly) {
+    return (
+      <g>
+        <circle cx={cx} cy={cy} r={7} fill="#ef4444" stroke="#fff" strokeWidth={2} />
+        <text x={cx} y={cy - 12} textAnchor="middle" fill="#ef4444" fontSize={10} fontWeight={600}>!</text>
+      </g>
+    );
+  }
+  return <circle cx={cx} cy={cy} r={3} fill="#22c55e" />;
+}
+
+function SpendingHistory({ history }: { history: HistoryPoint[] }) {
+  const anomalyCount = history.filter((h) => h.is_anomaly).length;
   return (
-    <BarChartComponent
-      data={chartData}
-      xKey="month"
-      bars={[
-        { key: "spend",   color: "#22c55e", name: "Monthly Spend (₹)" },
-        { key: "anomaly", color: "#ef4444", name: "Anomaly Detected" },
-      ]}
-      title="12-Month Spending History"
-      height={280}
-    />
+    <div>
+      <h3 className="text-sm font-semibold text-gray-600 mb-3">12-Month Spending Trend</h3>
+      <ResponsiveContainer width="100%" height={280}>
+        <LineChart data={history} margin={{ top: 14, right: 20, left: 0, bottom: 5 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+          <XAxis dataKey="month" tick={{ fontSize: 11 }} />
+          <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => `₹${v}`} />
+          <Tooltip
+            contentStyle={{ borderRadius: "8px", border: "1px solid #e5e7eb", fontSize: 12 }}
+            formatter={(value, _name, entry) => [
+              `₹${Number(value).toFixed(0)}${entry.payload?.is_anomaly ? "  ⚠ Anomaly" : ""}`,
+              "Spend",
+            ]}
+          />
+          <Line
+            type="monotone"
+            dataKey="spend"
+            stroke="#22c55e"
+            strokeWidth={2}
+            dot={<AnomalyDot />}
+            activeDot={{ r: 5 }}
+          />
+        </LineChart>
+      </ResponsiveContainer>
+      <div className="flex items-center gap-5 mt-2 text-xs text-gray-500">
+        <div className="flex items-center gap-1.5">
+          <div className="w-3 h-3 rounded-full bg-green-500" /> Normal spend
+        </div>
+        <div className="flex items-center gap-1.5">
+          <div className="w-3 h-3 rounded-full bg-red-500" />
+          Anomaly detected{anomalyCount > 0 ? ` (${anomalyCount} month${anomalyCount > 1 ? "s" : ""})` : " — none this year"}
+        </div>
+      </div>
+    </div>
   );
 }
 

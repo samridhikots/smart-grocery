@@ -125,39 +125,46 @@ Historical Purchases + 6 Kaggle Datasets (or India-specific synthetic fallback)
 - Default budget: ₹2,000 per week; currency field: "INR" in all responses
 - Supports household size scaling and category filtering
 
-### Feature 4: Overspending Detection
+### Feature 4: User Authentication & Personalisation
+- JWT-based auth (python-jose HS256, 30-day tokens) + bcrypt password hashing
+- Signup → onboarding wizard (household size, monthly budget, dietary prefs) → personalised experience
+- Every protected endpoint derives `user_id` from the JWT — no trusting client-supplied IDs
+- Endpoints: POST /auth/signup, POST /auth/login, GET /auth/me, PUT /auth/onboarding
+
+### Feature 5: Overspending Detection
 - **Isolation Forest** with n_estimators=150, contamination=0.1
 - Features: monthly_spend, spend_vs_avg, n_unique_items, avg_price_paid, is_festival_month
-- Per-user, per-month anomaly scoring; returns is_anomaly flag and anomaly score
-- Accessible via GET /api/overspending
+- Per-user, per-month anomaly scoring; returns is_anomaly flag, 12-month history, and anomaly markers on the spend trend chart
+- Accessible via GET /api/overspending (Bearer token required)
 
-### Feature 5: Product Recommendations
+### Feature 6: Product Recommendations
 - **FP-Growth via mlxtend** (min_support=0.005, min_confidence=0.20)
 - Market basket analysis on Indian co-purchase patterns (e.g., Milk → Curd, Atta → Ghee)
 - Results sorted by lift; fallback to India-specific heuristics when data is sparse
-- Accessible via POST /api/recommendations with basket: ["Milk", "Atta"]
 
-### Feature 6: Sustainability Tracking
+### Feature 7: Explainable AI Recommendations
+- Each demand recommendation card shows auto-generated explanation badges:
+  - Festival season boost, seasonal demand multiplier, confidence level, urgency, trend direction
+- "Why this recommendation?" expand panel shows full feature breakdown (historical avg, XGBoost prediction, seasonal factor, festival flag, estimated cost)
+- Academic claim: **Explainable AI** (XAI) applied to demand forecasting
+
+### Feature 8: Sustainability Tracking
 - Rule-based eco scoring (0–10 scale per item)
 - CO₂ estimates per unit, plastic packaging flag, swap suggestions
-- Supports: GET /api/sustainability, GET /api/sustainability/items, GET /api/sustainability/swaps
-- Frontend: /sustainability page with EcoMeter, swap suggestions table, CO₂ chart
+- Frontend: /sustainability page with EcoMeter, CO₂ bar chart, eco score chart, and smart swap cards
 
-### Feature 7: AI Insights Aggregation
-- Combines outputs from all 7 models into prioritized insight cards
-- Accessible via GET /api/insights?user_id=1
-- Frontend: /insights page with InsightCard components and SpendingHistory
+### Feature 9: AI Insights Aggregation
+- Combines outputs from all 7 models into prioritized insight cards (critical/high/medium/info/low)
+- **Top 3 Actions Today** card surfaces the highest-priority actionable insights at the top
+- Spend trend line chart with red anomaly dot markers for overspending months
 
-### Feature 8: Weekly Plan Generator
-- Separates items into shopping trips by perishability
-- Monday: fresh produce (shelf life ≤ 7 days)
-- Wednesday: semi-perishables + overflow
-- Saturday: pantry staples and non-perishables
+### Feature 10: Budget Progress & Spend Trend
+- Dashboard budget bar: current month spend vs `user.monthly_budget` (from onboarding), colour-coded by utilisation
+- Month-over-month line chart: groups all purchases by YYYY-MM, shows trend across all recorded months
 
-### Feature 9: Model Comparison Dashboard
-- Side-by-side metrics: MAE, RMSE, R², Directional Accuracy (demand)
-- Accuracy, Precision, Recall, F1, ROC-AUC (waste)
-- Updated to include anomaly_detection and recommendation sections
+### Feature 11: Model Comparison Dashboard
+- Side-by-side metrics: MAE, RMSE, R², Directional Accuracy (demand: Ridge vs XGBoost)
+- Accuracy, Precision, Recall, F1, ROC-AUC (waste: Logistic vs TabNet)
 - Radar chart, bar charts, feature importance rankings
 
 ---

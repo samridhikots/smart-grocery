@@ -69,6 +69,7 @@ export interface DemandPrediction {
   estimated_cost_inr: number;
   days_until_next: number;
   seasonal_factor: number;
+  is_festival_month: number;
   urgency_message: string;
 }
 

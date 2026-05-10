@@ -9,19 +9,88 @@
 
 ---
 
+**Authentication:** Protected endpoints require `Authorization: Bearer <token>`. Tokens are obtained from `/api/auth/signup` or `/api/auth/login` and are valid for 30 days.
+
 ## Table of Contents
 
+0. [Auth Endpoints](#0-auth-endpoints)
 1. [Health Endpoints](#1-health-endpoints)
 2. [POST /api/add-purchase](#2-post-apiadd-purchase)
 3. [GET /api/purchases](#3-get-apipurchases)
-4. [GET /api/items](#4-get-apiitems)
-5. [GET /api/predict-demand](#5-get-apipredict-demand)
-6. [GET /api/predict-waste](#6-get-apipredict-waste)
-7. [POST /api/optimize-budget](#7-post-apioptimize-budget)
-8. [GET /api/generate-plan](#8-get-apigenerate-plan)
-9. [GET /api/compare-models](#9-get-apicompare-models)
-10. [Error Responses](#10-error-responses)
-11. [Sample cURL Commands](#11-sample-curl-commands)
+4. [DELETE /api/purchases/{id}](#4-delete-apipurchasesid)
+5. [GET /api/items](#5-get-apiitems)
+6. [GET /api/predict-demand](#6-get-apipredict-demand)
+7. [GET /api/predict-waste](#7-get-apipredict-waste)
+8. [POST /api/optimize-budget](#8-post-apioptimize-budget)
+9. [GET /api/insights](#9-get-apiinsights)
+10. [GET /api/overspending](#10-get-apioverspending)
+11. [GET /api/sustainability](#11-get-apisustainability)
+12. [GET /api/compare-models](#12-get-apicompare-models)
+13. [Error Responses](#13-error-responses)
+14. [Sample cURL Commands](#14-sample-curl-commands)
+
+---
+
+## 0. Auth Endpoints
+
+### POST /api/auth/signup
+
+Create a new user account and return a JWT.
+
+**Request Body:**
+```json
+{ "name": "Samridhi", "email": "s@example.com", "password": "secret123" }
+```
+
+**Response: 200 OK**
+```json
+{
+  "access_token": "eyJ...",
+  "token_type": "bearer",
+  "user": {
+    "id": 1, "name": "Samridhi", "email": "s@example.com",
+    "household_size": 3, "monthly_budget": 3000.0,
+    "dietary_prefs": "", "onboarding_complete": false
+  }
+}
+```
+
+**Error 400:** Email already registered.
+
+---
+
+### POST /api/auth/login
+
+Authenticate and return a JWT.
+
+**Request Body:**
+```json
+{ "email": "s@example.com", "password": "secret123" }
+```
+
+**Response:** Same shape as signup (200 OK).  
+**Error 401:** Invalid credentials.
+
+---
+
+### GET /api/auth/me
+
+Return the current user's profile. **Requires Bearer token.**
+
+**Response: 200 OK** — `User` object (same shape as above).
+
+---
+
+### PUT /api/auth/onboarding
+
+Save onboarding data and mark `onboarding_complete = true`. **Requires Bearer token.**
+
+**Request Body:**
+```json
+{ "household_size": 4, "monthly_budget": 5000.0, "dietary_prefs": "Vegetarian" }
+```
+
+**Response: 200 OK** — Updated `User` object.
 
 ---
 
@@ -60,7 +129,7 @@ Returns server health and model readiness status.
 
 ## 2. POST /api/add-purchase
 
-Record a grocery purchase in the database.
+Record a grocery purchase. **Requires Bearer token.** The `user_id` is extracted from the JWT — do not send it in the body.
 
 **Request Body:**
 
@@ -69,20 +138,18 @@ Record a grocery purchase in the database.
   "item": "Tomato",
   "category": "Vegetables",
   "quantity": 1.5,
-  "price": 3.75,
-  "purchase_date": "2024-05-01",
-  "user_id": 1
+  "price": 37.50,
+  "purchase_date": "2024-05-01"
 }
 ```
 
 | Field | Type | Required | Validation | Description |
 |-------|------|----------|-----------|-------------|
-| `item` | string | Yes | — | Item name (any string) |
+| `item` | string | Yes | — | Item name |
 | `category` | string | Yes | — | Category name |
 | `quantity` | float | Yes | > 0 | Amount in kg or units |
-| `price` | float | Yes | > 0 | Total price paid ($) |
+| `price` | float | Yes | > 0 | Total price paid (₹) |
 | `purchase_date` | string | Yes | — | Format: `YYYY-MM-DD` |
-| `user_id` | int | No | default=1 | Household identifier |
 
 **Response: 201 Created**
 
@@ -114,16 +181,15 @@ Record a grocery purchase in the database.
 
 ## 3. GET /api/purchases
 
-List recorded purchases, most recent first.
+List the authenticated user's purchases, most recent first. **Requires Bearer token.**
 
 **Query Parameters:**
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `limit` | int | 50 | Maximum number of records to return |
-| `user_id` | int | none | Filter by user/household ID |
 
-**Example:** `GET /api/purchases?limit=10&user_id=1`
+**Example:** `GET /api/purchases?limit=100`
 
 **Response: 200 OK**
 
@@ -154,7 +220,19 @@ Returns empty array `[]` if no purchases exist.
 
 ---
 
-## 4. GET /api/items
+## 4. DELETE /api/purchases/{id}
+
+Delete a purchase record. **Requires Bearer token.** Returns 403 if the purchase belongs to a different user.
+
+**Path parameter:** `id` — the purchase record ID.
+
+**Response: 204 No Content**  
+**Error 403:** Forbidden — purchase does not belong to the current user.  
+**Error 404:** Purchase not found.
+
+---
+
+## 5. GET /api/items
 
 List all items in the product catalog.
 
@@ -425,7 +503,77 @@ Generate a 3-day weekly shopping plan organized by shopping trip.
 
 ---
 
-## 9. GET /api/compare-models
+## 9. GET /api/insights
+
+Return ML-generated insights for the authenticated user. **Requires Bearer token.**
+
+**Response: 200 OK**
+```json
+{
+  "user_id": 1,
+  "insights": [
+    {
+      "title": "High spending on Vegetables",
+      "message": "You spent ₹820 on Vegetables — 32% of your total budget.",
+      "severity": "high",
+      "data": { "spend": 820, "pct": 32.0 }
+    }
+  ],
+  "total": 5
+}
+```
+
+`severity` values: `"critical"` | `"high"` | `"medium"` | `"info"` | `"low"`
+
+---
+
+## 10. GET /api/overspending
+
+Detect whether the current month's spend is anomalous using IsolationForest. **Requires Bearer token.**
+
+**Query Parameters:** `month` (int, default = current month), `year` (int, default = current year)
+
+**Response: 200 OK**
+```json
+{
+  "is_anomaly": true,
+  "monthly_spend": 4200.0,
+  "avg_3month": 3100.0,
+  "overspend_amount": 1100.0,
+  "message": "Your spend this month is significantly above your 3-month average.",
+  "history": [
+    { "month": "Jan", "spend": 3050, "is_anomaly": false },
+    { "month": "Feb", "spend": 4200, "is_anomaly": true }
+  ]
+}
+```
+
+---
+
+## 11. GET /api/sustainability
+
+Return the user's environmental footprint for recent purchases. **Requires Bearer token.**
+
+**Query Parameters:** `months` (int, default = 1)
+
+**Response: 200 OK**
+```json
+{
+  "total_co2_kg_estimate": 12.4,
+  "avg_eco_score": 6.8,
+  "plastic_packaging_pct": 42.0,
+  "non_biodegradable_pct": 35.0,
+  "swap_suggestions": [
+    { "item": "Paneer", "swap_to": "Tofu", "co2_saving_pct": 28, "reason": "Lower CO₂ per unit" }
+  ]
+}
+```
+
+**GET /api/sustainability/items** (no auth) — returns all 30 items' static eco profiles.
+
+---
+
+## 12. GET /api/compare-models
 
 Return full model comparison metrics, winners, and feature importance.
 

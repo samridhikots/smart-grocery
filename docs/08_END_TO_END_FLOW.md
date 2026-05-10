@@ -5,15 +5,77 @@
 
 ## Table of Contents
 
+0. [Authentication & Onboarding Flow](#0-authentication--onboarding-flow)
 1. [System Startup Flow](#1-system-startup-flow)
-2. [Demand Prediction Flow](#2-demand-prediction-flow)
+2. [Demand Prediction Flow (with Explainability)](#2-demand-prediction-flow)
 3. [Waste Prediction Flow](#3-waste-prediction-flow)
 4. [Budget Optimization Flow](#4-budget-optimization-flow)
 5. [Model Comparison Flow](#5-model-comparison-flow)
 6. [Add Purchase Flow](#6-add-purchase-flow)
-7. [Weekly Plan Generation Flow](#7-weekly-plan-generation-flow)
-8. [Cross-Component Interactions](#8-cross-component-interactions)
-9. [Full Request Lifecycle](#9-full-request-lifecycle)
+7. [Dashboard — Budget Bar & Spend Trend](#7-dashboard--budget-bar--spend-trend)
+8. [Insights — Top 3 Actions & Anomaly Chart](#8-insights--top-3-actions--anomaly-chart)
+9. [Cross-Component Interactions](#9-cross-component-interactions)
+10. [Full Request Lifecycle](#10-full-request-lifecycle)
+
+---
+
+## 0. Authentication & Onboarding Flow
+
+```
+            USER REGISTRATION & ONBOARDING
+            ═══════════════════════════════
+
+  User visits /auth/signup
+         │
+         ▼ [Browser] POST /api/auth/signup
+  { name, email, password }
+         │
+         ▼ [Backend — auth.py]
+  hash_password(password) → bcrypt hash
+  INSERT INTO users (name, email, password_hash, ...) → id=1
+  create_access_token(user_id=1) → JWT (30-day expiry)
+         │
+         ▼ [Response]
+  { access_token: "eyJ...", user: { onboarding_complete: false } }
+         │
+         ▼ [Frontend — AuthContext]
+  localStorage.setItem("sg_token", access_token)
+  setUser(user)                  ← user.onboarding_complete = false
+         │
+         ▼ [OnboardingModal renders]
+  Step 1: Household size (1–15, +/− stepper)
+  Step 2: Monthly budget (₹ input + ₹1500/3000/5000/8000 presets)
+  Step 3: Dietary prefs (Vegetarian / Non-Veg / Vegan / Jain / GF chips)
+         │
+         ▼ [PUT /api/auth/onboarding — Bearer token]
+  { household_size: 4, monthly_budget: 5000, dietary_prefs: "Vegetarian" }
+         │
+         ▼ [Backend]
+  UPDATE users SET household_size=4, monthly_budget=5000,
+                   dietary_prefs="Vegetarian", onboarding_complete=1
+  WHERE id = <from JWT>
+         │
+         ▼ [Frontend]
+  setUser({ ...user, onboarding_complete: true })
+  Modal closes → user sees Dashboard
+
+  ────────────────────────────────────────────
+
+  SUBSEQUENT VISITS (token in localStorage)
+         │
+         ▼ [AuthContext mount]
+  token = localStorage.getItem("sg_token")
+  GET /api/auth/me  (Authorization: Bearer token)
+         │
+         ▼ [Backend decodes JWT → user_id → DB lookup]
+  setUser(user)     ← restores full session, no re-login needed
+         │
+         ▼ User sees their dashboard directly
+```
+
+**Token lifecycle:**  
+- 30-day expiry encoded in the JWT payload (`"exp"` claim)  
+- On 401 from `/auth/me`: `logout()` is called — clears token, redirects to `/auth/signin`
 
 ---
 
@@ -169,10 +231,22 @@ API endpoint: `GET /api/predict-demand`
   └─────────────────────────────────────────────────────────┘
 
   Frontend renders:
-  ┌────────────────────────────────────────────────┐
-  │  BAR CHART: XGBoost vs Linear vs Historical    │
-  │  TABLE: 30 items with confidence bars          │
-  └────────────────────────────────────────────────┘
+  ┌────────────────────────────────────────────────────────┐
+  │  BAR CHART: XGBoost vs Linear vs Historical (top 12)   │
+  │                                                        │
+  │  EXPLAINABLE CARDS (3-column grid):                   │
+  │  ┌─────────────────────────────────────────┐          │
+  │  │ Tomato               Vegetables          │          │
+  │  │ "Buy in 8 days"                  × 3.29 │          │
+  │  │ ████████████░░░░  86% confidence  ₹132  │          │
+  │  │ [High seasonal demand] [High confidence] │          │
+  │  │ "Why this recommendation?" ▼             │          │
+  │  │   Historical avg: ×2.31                  │          │
+  │  │   XGBoost pred:   ×3.29                  │          │
+  │  │   Seasonal factor: 1.35×                 │          │
+  │  │   Festival month:  No                    │          │
+  │  └─────────────────────────────────────────┘          │
+  └────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -362,30 +436,35 @@ API endpoint: `GET /api/compare-models`
 
 ## 6. Add Purchase Flow
 
-Triggered by: User fills form on `/add` and clicks "Add Purchase"
+Triggered by: User types in the fuzzy-search autocomplete on `/add` and clicks "Add Purchase"
 
 ```
              ADD PURCHASE FLOW
              ═════════════════
 
-  User fills form:
-  ┌──────────────────────────┐
-  │ Category: Vegetables      │
-  │ Item: Tomato              │
-  │ Quantity: 1.5             │
-  │ Price: 3.75               │
-  │ Date: 2024-05-01          │
-  └──────────────────────────┘
+  User types in autocomplete:
+  ┌──────────────────────────────────────────┐
+  │ 🔍 "tom"                                 │
+  │ ┌────────────────────────────────────┐   │
+  │ │ Tomato          [Vegetables]       │   │← dropdown appears
+  │ └────────────────────────────────────┘   │
+  │ → click → item="Tomato", cat="Vegetables"│
+  │                                          │
+  │ Quantity: 1.5                            │
+  │ Price:    37.50                          │
+  │ Date:     2026-05-10                     │
+  └──────────────────────────────────────────┘
 
   Form.tsx handleSubmit():
-  1. Client-side validation (non-empty fields)
+  1. Client-side validation (item + category + quantity + price non-empty)
   2. Parse quantity/price to float
-  3. api.addPurchase({...})
+  3. api.addPurchase({...})  ← Authorization: Bearer token auto-injected
        ↓
   POST /api/add-purchase
+  Headers: Authorization: Bearer <jwt>
        ↓
-  Pydantic validates request body
-  (quantity > 0, price > 0 enforced)
+  get_current_user_id(credentials) → user_id = 1  (from JWT)
+  Pydantic validates body (quantity > 0, price > 0)
        ↓
   SQLAlchemy creates PurchaseRecord:
   ┌─────────────────────────────────────┐
@@ -393,7 +472,7 @@ Triggered by: User fills form on `/add` and clicks "Add Purchase"
   │ (user_id, item, category, quantity, │
   │  price, purchase_date)              │
   │ VALUES (1, 'Tomato', 'Vegetables',  │
-  │         1.5, 3.75, '2024-05-01')    │
+  │         1.5, 37.50, '2026-05-10')   │
   └─────────────────────────────────────┘
        ↓
   201 Created → {id: 43, item: "Tomato", ...}
@@ -411,7 +490,7 @@ Triggered by: User fills form on `/add` and clicks "Add Purchase"
 
 ---
 
-## 7. Weekly Plan Generation Flow
+## A. Weekly Plan Generation Flow (Legacy Endpoint)
 
 Triggered by: `GET /api/generate-plan?household_size=3`
 
@@ -464,39 +543,122 @@ Triggered by: `GET /api/generate-plan?household_size=3`
 
 ---
 
-## 8. Cross-Component Interactions
+## 7. Dashboard — Budget Bar & Spend Trend
+
+Triggered by: User visits `/dashboard`  
+APIs: `GET /api/purchases?limit=200` + `GET /api/predict-waste`
 
 ```
-┌────────────────────────────────────────────────────────────────┐
-│                     COMPONENT INTERACTIONS                     │
-│                                                                │
-│  model_store (populated at startup)                           │
-│       │                                                        │
-│       ├─── /predict-demand ──→ demand_linear.predict()        │
-│       │                       demand_xgboost.predict()        │
-│       │                                                        │
-│       ├─── /predict-waste  ──→ waste_logistic.predict_proba() │
-│       │                       waste_rf.predict_proba()        │
-│       │                                                        │
-│       ├─── /optimize-budget → item_stats (per-item features)  │
-│       │                       metadata (priority, nutrition)   │
-│       │                                                        │
-│       └─── /compare-models ─→ metrics (pre-computed at train) │
-│                               feature_importance()            │
-│                                                                │
-│  SQLite database                                               │
-│       │                                                        │
-│       ├─── /add-purchase ───→ INSERT into purchases           │
-│       └─── /purchases    ───→ SELECT from purchases           │
-│                                                                │
-│  CSV files (read-only after generation)                       │
-│       └─── build_*_features() → pandas DataFrame operations  │
-└────────────────────────────────────────────────────────────────┘
+  purchases[] received
+         │
+         ├─── Group by purchase_date.slice(0,7)  →  monthlyMap
+         │    { "2026-03": 2840, "2026-04": 3150, "2026-05": 1100 }
+         │
+         ├─── Filter to thisMonth = "2026-05"
+         │    currentMonthSpend = ₹1100
+         │
+         ├─── user.monthly_budget = ₹3000 (from onboarding)
+         │
+         ▼  BudgetBar renders:
+  ┌──────────────────────────────────────────────┐
+  │ Monthly Budget                  ₹1900 left   │
+  │ ₹1100  of ₹3000                              │
+  │ ████░░░░░░░░░░░░░░░░░░░░  37% used           │
+  └──────────────────────────────────────────────┘
+  (green < 70%, yellow 70–90%, red > 90%)
+
+         │
+         ▼  LineChartComponent (only if ≥ 2 months):
+  Month-over-Month Spend Trend
+  ┌────────────────────────────────────────────┐
+  │  ₹3500 ─                                   │
+  │        ╲                                   │
+  │  ₹3000 ──●────────●                        │
+  │                    ╲                       │
+  │  ₹2500 ──────────────●                     │
+  │          Mar   Apr   May                   │
+  └────────────────────────────────────────────┘
 ```
 
 ---
 
-## 9. Full Request Lifecycle
+## 8. Insights — Top 3 Actions & Anomaly Chart
+
+Triggered by: User visits `/insights`  
+APIs: `GET /api/insights` + `GET /api/overspending`
+
+```
+  insights[] and overspending received
+         │
+         ├─── top3 = insights.filter(i => i.severity !== "low").slice(0,3)
+         │
+         ▼  "Your top 3 actions today" card (yellow bg):
+  ┌───────────────────────────────────────────────┐
+  │  ⚡ Your top 3 actions today                   │
+  │  ① High spending on Dairy — ₹820 spent (32%)  │
+  │  ② Spinach expiry risk — use within 2 days     │
+  │  ③ Budget anomaly — ₹1,100 above 3-month avg  │
+  └───────────────────────────────────────────────┘
+
+         │
+         └─── overspending.history[] fed to SpendingHistory:
+
+  Recharts LineChart with custom AnomalyDot component:
+  ┌───────────────────────────────────────────────┐
+  │  12-Month Spending Trend                       │
+  │  ₹4500 ─                                      │
+  │         ╲    ⊕ ← red dot + "!" (anomaly)       │
+  │  ₹3000 ──●────●────●────●                     │
+  │           Jan  Feb  Mar  Apr                   │
+  │                                                │
+  │  ● Normal spend   ⊕ Anomaly detected (1 month) │
+  └───────────────────────────────────────────────┘
+
+  AnomalyDot renders:
+    is_anomaly=true  → <circle r={7} fill="#ef4444" /> + <text>!</text>
+    is_anomaly=false → <circle r={3} fill="#22c55e" />
+```
+
+---
+
+## 9. Cross-Component Interactions
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                      COMPONENT INTERACTIONS                      │
+│                                                                  │
+│  JWT (python-jose)                                               │
+│       │                                                          │
+│       ├─── /auth/signup, /auth/login ──→ create_access_token()  │
+│       ├─── /auth/me                  ──→ _decode_token() → id   │
+│       └─── All protected routes      ──→ get_current_user_id()  │
+│                                                                  │
+│  SQLite — users table                                            │
+│       ├─── /auth/signup     ──→ INSERT INTO users               │
+│       ├─── /auth/me         ──→ SELECT user by id               │
+│       └─── /auth/onboarding ──→ UPDATE users (budget, prefs)    │
+│                                                                  │
+│  SQLite — purchases table                                        │
+│       ├─── /add-purchase ─→ INSERT (user_id from JWT)           │
+│       ├─── /purchases    ─→ SELECT WHERE user_id = <from JWT>   │
+│       ├─── /purchases/id ─→ DELETE (ownership check)            │
+│       ├─── /insights     ─→ SELECT (aggregations per user)      │
+│       └─── /overspending ─→ SELECT (monthly totals per user)    │
+│                                                                  │
+│  model_store (populated at startup)                              │
+│       ├─── /predict-demand  ──→ demand_linear + xgboost         │
+│       ├─── /predict-waste   ──→ waste_logistic + tabnet         │
+│       ├─── /optimize-budget ──→ item_stats + metadata           │
+│       └─── /compare-models  ──→ pre-computed metrics            │
+│                                                                  │
+│  CSV files (read-only after generation)                          │
+│       └─── build_*_features() → pandas DataFrame operations     │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 10. Full Request Lifecycle
 
 Anatomy of a single HTTP request through the full stack:
 

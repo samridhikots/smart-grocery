@@ -1,10 +1,11 @@
 "use client";
 import { useEffect, useState, useCallback } from "react";
 import { api, Purchase, WasteAlert } from "@/services/api";
-import { BarChartComponent } from "@/components/Chart";
+import { BarChartComponent, LineChartComponent } from "@/components/Chart";
 import Table from "@/components/Table";
 import { ShoppingCart, AlertTriangle, TrendingUp, DollarSign } from "lucide-react";
 import { CATEGORY_COLORS, RISK_COLORS } from "@/lib/constants";
+import { useAuth } from "@/contexts/AuthContext";
 
 function StatCard({ icon: Icon, label, value, sub, color }: {
   icon: React.ElementType; label: string; value: string | number; sub?: string; color: string;
@@ -23,7 +24,35 @@ function StatCard({ icon: Icon, label, value, sub, color }: {
   );
 }
 
+function BudgetBar({ spent, budget }: { spent: number; budget: number }) {
+  const pct = budget > 0 ? Math.min((spent / budget) * 100, 100) : 0;
+  const over = budget > 0 && spent > budget;
+  const color = pct > 90 ? "bg-red-500" : pct > 70 ? "bg-yellow-400" : "bg-green-500";
+  return (
+    <div className="card">
+      <div className="flex items-center justify-between mb-2">
+        <h3 className="text-sm font-semibold text-gray-700">Monthly Budget</h3>
+        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${over ? "bg-red-100 text-red-700" : "bg-green-100 text-green-700"}`}>
+          {over ? `₹${(spent - budget).toFixed(0)} over` : `₹${(budget - spent).toFixed(0)} left`}
+        </span>
+      </div>
+      <div className="flex items-end gap-2 mb-2">
+        <span className="text-2xl font-bold text-gray-900">₹{spent.toFixed(0)}</span>
+        <span className="text-sm text-gray-400 mb-0.5">of ₹{budget.toFixed(0)}</span>
+      </div>
+      <div className="w-full h-3 bg-gray-100 rounded-full overflow-hidden">
+        <div
+          className={`h-full rounded-full transition-all duration-700 ${color}`}
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+      <p className="text-xs text-gray-400 mt-1">{pct.toFixed(0)}% used this month</p>
+    </div>
+  );
+}
+
 export default function Dashboard() {
+  const { user } = useAuth();
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [waste, setWaste] = useState<WasteAlert[]>([]);
   const [loading, setLoading] = useState(true);
@@ -31,7 +60,7 @@ export default function Dashboard() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [p, w] = await Promise.all([api.getPurchases(50), api.predictWaste()]);
+      const [p, w] = await Promise.all([api.getPurchases(200), api.predictWaste()]);
       setPurchases(p);
       setWaste(w.waste_alerts);
     } catch (e) {
@@ -52,6 +81,26 @@ export default function Dashboard() {
     category,
     spend: parseFloat(spend.toFixed(2)),
   }));
+
+  // Monthly spend trend
+  const monthlyMap: Record<string, number> = {};
+  purchases.forEach((p) => {
+    const month = p.purchase_date.slice(0, 7); // YYYY-MM
+    monthlyMap[month] = (monthlyMap[month] || 0) + p.price;
+  });
+  const monthlyTrend = Object.entries(monthlyMap)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([month, spend]) => ({
+      month: new Date(month + "-01").toLocaleDateString("en-IN", { month: "short", year: "2-digit" }),
+      spend: parseFloat(spend.toFixed(2)),
+    }));
+
+  // Current month spend vs budget
+  const thisMonth = new Date().toISOString().slice(0, 7);
+  const currentMonthSpend = purchases
+    .filter((p) => p.purchase_date.startsWith(thisMonth))
+    .reduce((a, p) => a + p.price, 0);
+  const budget = user?.monthly_budget ?? 3000;
 
   const totalSpend = purchases.reduce((a, p) => a + p.price, 0);
   const highRisk = waste.filter((w) => w.risk_level === "High").length;
@@ -98,7 +147,10 @@ export default function Dashboard() {
   return (
     <div className="space-y-8">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
+          {user && <p className="text-sm text-gray-500 mt-0.5">{user.name.split(" ")[0]}&apos;s household overview</p>}
+        </div>
         <button onClick={load} className="btn-secondary text-sm">Refresh</button>
       </div>
 
@@ -109,6 +161,9 @@ export default function Dashboard() {
         <StatCard icon={AlertTriangle} label="High Waste Risk" value={highRisk} sub="items need attention" color="bg-red-50 text-red-600" />
         <StatCard icon={TrendingUp} label="Freshness Score" value={`${(avgConf * 100).toFixed(0)}%`} sub="avg across all items" color="bg-purple-50 text-purple-600" />
       </div>
+
+      {/* Budget bar */}
+      <BudgetBar spent={currentMonthSpend} budget={budget} />
 
       {/* Charts */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -137,6 +192,19 @@ export default function Dashboard() {
           })()}
         </div>
       </div>
+
+      {/* Month-over-month trend */}
+      {monthlyTrend.length >= 2 && (
+        <div className="card">
+          <LineChartComponent
+            data={monthlyTrend}
+            xKey="month"
+            lines={[{ key: "spend", color: "#22c55e", name: "Monthly Spend (₹)" }]}
+            title="Month-over-Month Spend Trend"
+            height={280}
+          />
+        </div>
+      )}
 
       {/* Tables */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
