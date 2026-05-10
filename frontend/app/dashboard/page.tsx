@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState, useCallback } from "react";
-import { api, Purchase, WasteAlert } from "@/services/api";
+import { api, Purchase, WasteAlert, DemandPrediction } from "@/services/api";
 import { BarChartComponent, LineChartComponent } from "@/components/Chart";
 import Table from "@/components/Table";
 import { ShoppingCart, AlertTriangle, TrendingUp, DollarSign, ChevronDown, ChevronUp, Zap, ArrowRight } from "lucide-react";
@@ -56,14 +56,16 @@ export default function Dashboard() {
   const { user } = useAuth();
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [waste, setWaste] = useState<WasteAlert[]>([]);
+  const [demand, setDemand] = useState<DemandPrediction[]>([]);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [p, w] = await Promise.all([api.getPurchases(200), api.predictWaste()]);
+      const [p, w, d] = await Promise.all([api.getPurchases(200), api.predictWaste(), api.predictDemand()]);
       setPurchases(p);
       setWaste(w.waste_alerts);
+      setDemand(d.predictions);
     } catch (e) {
       console.error(e);
     } finally {
@@ -237,8 +239,28 @@ export default function Dashboard() {
   const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
   const today = new Date().toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long" });
 
-  // Derive top 3 urgent items from demand predictions (waste high-risk + low stock days)
-  const urgentWaste = waste.filter((w) => w.risk_level === "High" || w.risk_level === "Medium").slice(0, 2);
+  // Merge waste High/Medium alerts + demand items due in ≤2 days into a single prioritised action list
+  type TopAction = { key: string; title: string; subtitle: string; badge: string; badgeColor: string };
+  const topActions: TopAction[] = [
+    ...waste
+      .filter((w) => w.risk_level === "High" || w.risk_level === "Medium")
+      .map((w) => ({
+        key: `waste-${w.item}`,
+        title: `${w.item} — use before it spoils`,
+        subtitle: `${w.recommendation} · ${w.days_until_expiry} day${w.days_until_expiry !== 1 ? "s" : ""} left`,
+        badge: w.risk_level,
+        badgeColor: w.risk_level === "High" ? "bg-red-100 text-red-700" : "bg-orange-100 text-orange-700",
+      })),
+    ...demand
+      .filter((d) => d.days_until_next <= 2)
+      .map((d) => ({
+        key: `demand-${d.item}`,
+        title: `${d.item} — time to restock`,
+        subtitle: `${d.urgency_message} · Buy ${d.recommended_quantity.toFixed(1)} kg · ₹${d.estimated_cost_inr.toFixed(0)}`,
+        badge: "Buy today",
+        badgeColor: "bg-blue-100 text-blue-700",
+      })),
+  ].slice(0, 3);
 
   return (
     <div className="space-y-6">
@@ -253,26 +275,24 @@ export default function Dashboard() {
         <button onClick={load} className="btn-secondary text-sm">Refresh</button>
       </div>
 
-      {/* ⚡ Top actions today (moved from Insights) */}
-      {urgentWaste.length > 0 && (
+      {/* ⚡ Top actions today — waste alerts + urgent restocks */}
+      {topActions.length > 0 && (
         <div className="card border-yellow-200 bg-yellow-50">
           <h2 className="text-sm font-semibold text-yellow-800 flex items-center gap-1.5 mb-3">
-            <Zap className="w-4 h-4" /> Today&apos;s top actions
+            <Zap className="w-4 h-4" /> Today&apos;s top {topActions.length} action{topActions.length > 1 ? "s" : ""}
           </h2>
           <div className="space-y-2">
-            {urgentWaste.map((w, i) => (
-              <div key={w.item} className="flex items-start gap-3 bg-white rounded-xl p-3 border border-yellow-100">
+            {topActions.map((action, i) => (
+              <div key={action.key} className="flex items-start gap-3 bg-white rounded-xl p-3 border border-yellow-100">
                 <span className="w-6 h-6 rounded-full bg-yellow-100 text-yellow-700 text-xs font-bold flex items-center justify-center flex-shrink-0 mt-0.5">
                   {i + 1}
                 </span>
                 <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-gray-800 text-sm">{w.item} — use before it spoils</p>
-                  <p className="text-xs text-gray-500 mt-0.5">{w.recommendation} · {w.days_until_expiry} day{w.days_until_expiry !== 1 ? "s" : ""} left</p>
+                  <p className="font-semibold text-gray-800 text-sm">{action.title}</p>
+                  <p className="text-xs text-gray-500 mt-0.5">{action.subtitle}</p>
                 </div>
-                <span className={`text-xs px-2 py-0.5 rounded-full font-semibold flex-shrink-0 ${
-                  w.risk_level === "High" ? "bg-red-100 text-red-700" : "bg-orange-100 text-orange-700"
-                }`}>
-                  {w.risk_level}
+                <span className={`text-xs px-2 py-0.5 rounded-full font-semibold flex-shrink-0 ${action.badgeColor}`}>
+                  {action.badge}
                 </span>
               </div>
             ))}

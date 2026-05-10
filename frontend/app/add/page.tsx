@@ -45,7 +45,7 @@ function AddPageInner() {
   const fetchPurchases = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await api.getPurchases(20);
+      const data = await api.getPurchases(200);
       setPurchases(data);
     } catch (e) {
       console.error(e);

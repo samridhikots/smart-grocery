@@ -2,9 +2,8 @@
 import { useEffect, useState, useCallback } from "react";
 import { api, DemandPrediction, WasteAlert, OptimizationResult, OptimizedItem } from "@/services/api";
 import Table from "@/components/Table";
-import { ShoppingBag, Trash2, DollarSign, Copy, Share2, Check, HelpCircle, ArrowRight } from "lucide-react";
+import { ShoppingBag, Trash2, DollarSign, Copy, Share2, Check, HelpCircle, ArrowRight, X } from "lucide-react";
 import { RISK_COLORS, CATEGORIES } from "@/lib/constants";
-import { useRouter } from "next/navigation";
 
 type Tab = "demand" | "waste" | "budget";
 
@@ -21,10 +20,13 @@ function explainDemand(pred: DemandPrediction): ReasonBadge[] {
   return reasons;
 }
 
-function DemandCard({ pred, urgencyGroup }: { pred: DemandPrediction; urgencyGroup: "today" | "week" | "later" }) {
+function DemandCard({ pred, urgencyGroup, onLogAsBought }: {
+  pred: DemandPrediction;
+  urgencyGroup: "today" | "week" | "later";
+  onLogAsBought: (pred: DemandPrediction) => void;
+}) {
   const [showWhy, setShowWhy] = useState(false);
   const reasons = explainDemand(pred);
-  const router = useRouter();
 
   const borderColor =
     urgencyGroup === "today" ? "border-l-4 border-l-red-400" :
@@ -37,10 +39,6 @@ function DemandCard({ pred, urgencyGroup }: { pred: DemandPrediction; urgencyGro
       : urgencyGroup === "week"
       ? <span className="text-xs px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 font-semibold flex-shrink-0">In {pred.days_until_next}d</span>
       : <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700 font-semibold flex-shrink-0">In {pred.days_until_next}d</span>;
-
-  function handleLogAsBought() {
-    router.push(`/add?item=${encodeURIComponent(pred.item)}&quantity=${pred.recommended_quantity.toFixed(1)}`);
-  }
 
   return (
     <div className={`flex items-center gap-3 p-4 bg-white border border-gray-200 rounded-xl hover:border-green-300 transition-colors ${borderColor}`}>
@@ -94,11 +92,102 @@ function DemandCard({ pred, urgencyGroup }: { pred: DemandPrediction; urgencyGro
       <div className="flex flex-col items-end gap-2 flex-shrink-0">
         {badge}
         <button
-          onClick={handleLogAsBought}
+          onClick={() => onLogAsBought(pred)}
           className="flex items-center gap-1 text-xs bg-green-600 text-white px-3 py-1.5 rounded-lg font-semibold hover:bg-green-700 transition-colors whitespace-nowrap"
         >
           Log as bought <ArrowRight className="w-3 h-3" />
         </button>
+      </div>
+    </div>
+  );
+}
+
+function LogAsBoughtModal({
+  pred,
+  onClose,
+  onSuccess,
+}: {
+  pred: DemandPrediction;
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
+  const [quantity, setQuantity] = useState(pred.recommended_quantity.toFixed(1));
+  const [price, setPrice] = useState(pred.estimated_cost_inr.toFixed(0));
+  const [purchaseDate, setPurchaseDate] = useState(new Date().toISOString().split("T")[0]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!quantity || !price) { setError("Quantity and price are required."); return; }
+    setLoading(true);
+    setError("");
+    try {
+      await api.addPurchase({
+        item: pred.item,
+        category: pred.category,
+        quantity: parseFloat(quantity),
+        price: parseFloat(price),
+        purchase_date: purchaseDate,
+      });
+      onSuccess();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to log purchase");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 space-y-4">
+        <div className="flex items-center justify-between">
+          <h2 className="font-bold text-gray-900">Log as bought</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="bg-green-50 border border-green-200 rounded-xl px-4 py-3">
+          <p className="font-semibold text-green-800">{pred.item}</p>
+          <p className="text-xs text-green-600">{pred.category}</p>
+        </div>
+
+        {error && (
+          <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</p>
+        )}
+
+        <form onSubmit={handleSubmit} className="space-y-3">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Quantity (kg / units) *</label>
+            <input
+              type="number" value={quantity} onChange={(e) => setQuantity(e.target.value)}
+              min="0.1" step="0.1"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Price (₹ total) *</label>
+            <input
+              type="number" value={price} onChange={(e) => setPrice(e.target.value)}
+              min="1" step="1"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Purchase Date</label>
+            <input
+              type="date" value={purchaseDate} onChange={(e) => setPurchaseDate(e.target.value)}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+            />
+          </div>
+          <div className="flex gap-2 pt-1">
+            <button type="button" onClick={onClose} className="flex-1 btn-secondary">Cancel</button>
+            <button type="submit" disabled={loading} className="flex-1 btn-primary disabled:opacity-60">
+              {loading ? "Saving…" : "Confirm"}
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );
@@ -115,6 +204,8 @@ export default function RecommendationsPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
+  const [logModal, setLogModal] = useState<DemandPrediction | null>(null);
+  const [logToast, setLogToast] = useState("");
 
   const loadDemand = useCallback(async () => {
     setLoading(true);
@@ -165,6 +256,14 @@ export default function RecommendationsPage() {
     else loadBudget();
   }, [tab, loadDemand, loadWaste, loadBudget]);
 
+  function handleLogSuccess() {
+    const item = logModal?.item ?? "";
+    setLogModal(null);
+    setLogToast(`${item} logged successfully!`);
+    setTimeout(() => setLogToast(""), 3000);
+    loadDemand();
+  }
+
   // Group demand predictions by urgency
   const todayItems  = demand.filter((d) => d.days_until_next <= 2);
   const weekItems   = demand.filter((d) => d.days_until_next > 2 && d.days_until_next <= 7);
@@ -187,6 +286,20 @@ export default function RecommendationsPage() {
 
   return (
     <div className="space-y-6">
+      {logModal && (
+        <LogAsBoughtModal
+          pred={logModal}
+          onClose={() => setLogModal(null)}
+          onSuccess={handleLogSuccess}
+        />
+      )}
+
+      {logToast && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-green-700 text-white text-sm font-medium px-5 py-3 rounded-xl shadow-lg flex items-center gap-2">
+          <Check className="w-4 h-4" /> {logToast}
+        </div>
+      )}
+
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
@@ -249,7 +362,7 @@ export default function RecommendationsPage() {
                 <div>
                   <h2 className="text-sm font-bold text-red-600 uppercase tracking-wide mb-3">Buy Today</h2>
                   <div className="space-y-2">
-                    {todayItems.map((pred) => <DemandCard key={pred.item} pred={pred} urgencyGroup="today" />)}
+                    {todayItems.map((pred) => <DemandCard key={pred.item} pred={pred} urgencyGroup="today" onLogAsBought={setLogModal} />)}
                   </div>
                 </div>
               )}
@@ -258,7 +371,7 @@ export default function RecommendationsPage() {
                 <div>
                   <h2 className="text-sm font-bold text-orange-500 uppercase tracking-wide mb-3">Buy This Week</h2>
                   <div className="space-y-2">
-                    {weekItems.map((pred) => <DemandCard key={pred.item} pred={pred} urgencyGroup="week" />)}
+                    {weekItems.map((pred) => <DemandCard key={pred.item} pred={pred} urgencyGroup="week" onLogAsBought={setLogModal} />)}
                   </div>
                 </div>
               )}
@@ -267,7 +380,7 @@ export default function RecommendationsPage() {
                 <div>
                   <h2 className="text-sm font-bold text-green-600 uppercase tracking-wide mb-3">Buy Later</h2>
                   <div className="space-y-2 opacity-75">
-                    {laterItems.map((pred) => <DemandCard key={pred.item} pred={pred} urgencyGroup="later" />)}
+                    {laterItems.map((pred) => <DemandCard key={pred.item} pred={pred} urgencyGroup="later" onLogAsBought={setLogModal} />)}
                   </div>
                 </div>
               )}
