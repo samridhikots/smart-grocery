@@ -44,44 +44,74 @@ export default function Navbar() {
   const moreActive = MORE_LINKS.some((l) => l.href === pathname);
 
   return (
-    <nav className="bg-white border-b border-gray-200 sticky top-0 z-50 shadow-sm">
+    <nav
+      className="bg-white sticky top-0 z-50"
+      style={{
+        borderBottom: "1.5px solid #e5e0d8",
+        boxShadow: "0 1px 6px rgba(0,0,0,0.06)",
+      }}
+    >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16">
+        <div className="flex items-center justify-between h-14">
+
           {/* Logo */}
           <Link
             href={user ? "/dashboard" : "/"}
-            className="flex items-center gap-2 font-bold text-green-700 text-lg flex-shrink-0"
+            className="flex items-center gap-2 font-bold text-base flex-shrink-0 group"
+            style={{ color: "var(--green-primary)" }}
           >
-            <ShoppingCart className="w-6 h-6" />
-            <span className="hidden sm:inline">SmartGrocery</span>
+            <div
+              className="w-7 h-7 rounded-lg flex items-center justify-center transition-transform duration-150 group-hover:scale-110"
+              style={{ background: "var(--green-primary)" }}
+            >
+              <ShoppingCart className="w-4 h-4 text-white" />
+            </div>
+            <span className="hidden sm:inline font-bold tracking-tight">SmartGrocery</span>
           </Link>
 
           {/* Nav links — only when logged in */}
           {user && (
-            <div className="flex items-center gap-1">
-              {PRIMARY_LINKS.map(({ href, label, icon: Icon }) => (
-                <Link
-                  key={href}
-                  href={href}
-                  className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
-                    pathname === href
-                      ? "bg-green-100 text-green-700"
-                      : "text-gray-600 hover:bg-gray-100"
-                  }`}
-                >
-                  <Icon className="w-4 h-4 flex-shrink-0" />
-                  <span className="hidden md:inline">{label}</span>
-                </Link>
-              ))}
+            <div className="flex items-center gap-0.5">
+              {PRIMARY_LINKS.map(({ href, label, icon: Icon }) => {
+                const active = pathname === href;
+                return (
+                  <Link
+                    key={href}
+                    href={href}
+                    className={`relative flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-150 whitespace-nowrap ${
+                      active
+                        ? "text-green-700"
+                        : "text-gray-500 hover:text-gray-800 hover:bg-gray-50"
+                    }`}
+                  >
+                    <Icon className="w-4 h-4 flex-shrink-0" />
+                    <span className="hidden md:inline">{label}</span>
+                    {active && (
+                      <span
+                        className="absolute bottom-0 left-2 right-2 h-0.5 rounded-full"
+                        style={{ background: "var(--green-primary)" }}
+                      />
+                    )}
+                  </Link>
+                );
+              })}
 
-              {/* Add Purchase — distinct green CTA */}
+              {/* Add Purchase — distinct CTA */}
               <Link
                 href="/add"
-                className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold transition-colors whitespace-nowrap mx-1 ${
+                className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-sm font-semibold transition-all duration-150 whitespace-nowrap mx-1 ${
                   pathname === "/add"
-                    ? "bg-green-700 text-white"
-                    : "bg-green-600 text-white hover:bg-green-700"
+                    ? "text-green-700 bg-green-50 ring-2 ring-green-200"
+                    : "text-white hover:opacity-90"
                 }`}
+                style={
+                  pathname !== "/add"
+                    ? {
+                        background: "var(--green-primary)",
+                        boxShadow: "0 2px 4px rgba(45,122,58,0.28)",
+                      }
+                    : undefined
+                }
               >
                 <PlusCircle className="w-4 h-4 flex-shrink-0" />
                 <span className="hidden md:inline">Add Purchase</span>
@@ -91,28 +121,38 @@ export default function Navbar() {
               <div className="relative" ref={moreRef}>
                 <button
                   onClick={() => setMoreOpen((o) => !o)}
-                  className={`flex items-center gap-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  className={`flex items-center gap-1 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-150 ${
                     moreActive || moreOpen
-                      ? "bg-green-100 text-green-700"
-                      : "text-gray-600 hover:bg-gray-100"
+                      ? "bg-green-50 text-green-700"
+                      : "text-gray-500 hover:text-gray-800 hover:bg-gray-50"
                   }`}
                 >
                   <span className="hidden md:inline">More</span>
-                  <ChevronDown className={`w-4 h-4 transition-transform ${moreOpen ? "rotate-180" : ""}`} />
+                  <ChevronDown
+                    className={`w-4 h-4 transition-transform duration-200 ${moreOpen ? "rotate-180" : ""}`}
+                  />
                 </button>
 
                 {moreOpen && (
-                  <div className="absolute right-0 top-full mt-1 w-52 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden z-50">
+                  <div
+                    className="absolute right-0 top-full mt-2 w-56 bg-white rounded-2xl overflow-hidden animate-slide-down"
+                    style={{
+                      border: "1.5px solid #e5e0d8",
+                      boxShadow: "0 8px 24px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.06)",
+                    }}
+                  >
                     {MORE_LINKS.map(({ href, label, icon: Icon, badge }) => (
                       <Link
                         key={href}
                         href={href}
                         onClick={() => setMoreOpen(false)}
-                        className={`flex items-center justify-between px-4 py-3 text-sm hover:bg-gray-50 transition-colors ${
-                          pathname === href ? "text-green-700 bg-green-50" : "text-gray-700"
+                        className={`flex items-center justify-between px-4 py-3 text-sm transition-colors ${
+                          pathname === href
+                            ? "text-green-700 bg-green-50"
+                            : "text-gray-700 hover:bg-gray-50"
                         }`}
                       >
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2.5">
                           <Icon className="w-4 h-4" />
                           {label}
                         </div>
@@ -133,8 +173,14 @@ export default function Navbar() {
           <div className="flex items-center gap-2 flex-shrink-0">
             {user ? (
               <>
-                <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-gray-50 rounded-lg border border-gray-200">
-                  <div className="w-6 h-6 rounded-full bg-green-600 flex items-center justify-center text-white text-xs font-bold">
+                <div
+                  className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-xl"
+                  style={{ background: "#f4f1ec", border: "1.5px solid #e5e0d8" }}
+                >
+                  <div
+                    className="w-6 h-6 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
+                    style={{ background: "var(--green-primary)" }}
+                  >
                     {user.name.charAt(0).toUpperCase()}
                   </div>
                   <span className="text-sm text-gray-700 font-medium max-w-[100px] truncate">
@@ -143,7 +189,7 @@ export default function Navbar() {
                 </div>
                 <button
                   onClick={handleLogout}
-                  className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium text-gray-600 hover:bg-red-50 hover:text-red-600 transition-colors"
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium text-gray-500 hover:bg-red-50 hover:text-red-600 transition-colors"
                   title="Sign out"
                 >
                   <LogOut className="w-4 h-4" />
@@ -152,15 +198,16 @@ export default function Navbar() {
               </>
             ) : (
               <div className="flex items-center gap-2">
-                <Link href="/auth/signin" className="btn-secondary text-sm py-1.5 px-3">
+                <Link href="/auth/signin" className="btn-secondary text-sm py-2 px-3">
                   Sign in
                 </Link>
-                <Link href="/auth/signup" className="btn-primary text-sm py-1.5 px-3">
+                <Link href="/auth/signup" className="btn-primary text-sm py-2 px-3">
                   Sign up
                 </Link>
               </div>
             )}
           </div>
+
         </div>
       </div>
     </nav>

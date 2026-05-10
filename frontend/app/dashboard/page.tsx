@@ -1,53 +1,104 @@
 "use client";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { api, Purchase, WasteAlert, DemandPrediction } from "@/services/api";
 import { BarChartComponent, LineChartComponent } from "@/components/Chart";
 import Table from "@/components/Table";
-import { ShoppingCart, AlertTriangle, TrendingUp, DollarSign, ChevronDown, ChevronUp, Zap, ArrowRight } from "lucide-react";
+import { ShoppingCart, AlertTriangle, TrendingUp, ChevronDown, ChevronUp, Zap, ArrowRight } from "lucide-react";
 import { CATEGORY_COLORS, RISK_COLORS } from "@/lib/constants";
 import { useAuth } from "@/contexts/AuthContext";
 import Link from "next/link";
 
-function StatCard({ icon: Icon, label, value, sub, color }: {
-  icon: React.ElementType; label: string; value: string | number; sub?: string; color: string;
+/* ── Animated number that counts from 0 to `to` on mount ── */
+function CountUp({
+  to,
+  decimals = 0,
+  duration = 750,
+  prefix = "",
+  suffix = "",
+}: {
+  to: number;
+  decimals?: number;
+  duration?: number;
+  prefix?: string;
+  suffix?: string;
 }) {
+  const [val, setVal] = useState(0);
+  const rafRef = useRef<number>(0);
+
+  useEffect(() => {
+    if (to === 0) { setVal(0); return; }
+    const start = Date.now();
+    const run = () => {
+      const t = Math.min((Date.now() - start) / duration, 1);
+      const eased = 1 - Math.pow(1 - t, 3);
+      setVal(to * eased);
+      if (t < 1) rafRef.current = requestAnimationFrame(run);
+      else setVal(to);
+    };
+    rafRef.current = requestAnimationFrame(run);
+    return () => cancelAnimationFrame(rafRef.current);
+  }, [to, duration]);
+
+  return <>{prefix}{val.toFixed(decimals)}{suffix}</>;
+}
+
+/* ── Budget progress bar with animated fill ── */
+function BudgetBar({ spent, budget }: { spent: number; budget: number }) {
+  const [barPct, setBarPct] = useState(0);
+  const pct    = budget > 0 ? Math.min((spent / budget) * 100, 100) : 0;
+  const over   = budget > 0 && spent > budget;
+  const color  = pct > 90 ? "bg-red-500" : pct > 70 ? "bg-yellow-400" : "bg-green-500";
+
+  useEffect(() => {
+    const t = setTimeout(() => setBarPct(pct), 150);
+    return () => clearTimeout(t);
+  }, [pct]);
+
   return (
-    <div className="card flex items-start gap-4">
-      <div className={`w-11 h-11 rounded-xl flex items-center justify-center ${color}`}>
-        <Icon className="w-5 h-5" />
+    <div className="card">
+      <div className="flex items-center justify-between mb-2">
+        <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400">Monthly Budget</h3>
+        <span
+          className={`text-xs font-semibold px-2.5 py-0.5 rounded-full ${
+            over ? "bg-red-100 text-red-700" : "bg-green-100 text-green-700"
+          }`}
+        >
+          {over ? `₹${(spent - budget).toFixed(0)} over` : `₹${(budget - spent).toFixed(0)} left`}
+        </span>
       </div>
-      <div>
-        <p className="text-sm text-gray-500">{label}</p>
-        <p className="text-2xl font-bold text-gray-800">{value}</p>
-        {sub && <p className="text-xs text-gray-400 mt-0.5">{sub}</p>}
+      <div className="flex items-baseline gap-2 mb-3">
+        <span className="text-2xl font-bold text-gray-900">
+          ₹<CountUp to={spent} />
+        </span>
+        <span className="text-sm text-gray-400">of ₹{budget.toLocaleString()}</span>
       </div>
+      <div className="w-full h-2.5 bg-gray-100 rounded-full overflow-hidden">
+        <div
+          className={`h-full rounded-full ${color}`}
+          style={{ width: `${barPct}%`, transition: "width 1s cubic-bezier(0.4, 0, 0.2, 1)" }}
+        />
+      </div>
+      <p className="text-xs text-gray-400 mt-1.5">{pct.toFixed(0)}% used this month</p>
     </div>
   );
 }
 
-function BudgetBar({ spent, budget }: { spent: number; budget: number }) {
-  const pct = budget > 0 ? Math.min((spent / budget) * 100, 100) : 0;
-  const over = budget > 0 && spent > budget;
-  const color = pct > 90 ? "bg-red-500" : pct > 70 ? "bg-yellow-400" : "bg-green-500";
+/* ── Compact stat card ── */
+function StatCard({
+  icon: Icon, label, value, sub, color,
+}: {
+  icon: React.ElementType; label: string; value: React.ReactNode; sub?: string; color: string;
+}) {
   return (
-    <div className="card">
-      <div className="flex items-center justify-between mb-2">
-        <h3 className="text-sm font-semibold text-gray-700">Monthly Budget</h3>
-        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${over ? "bg-red-100 text-red-700" : "bg-green-100 text-green-700"}`}>
-          {over ? `₹${(spent - budget).toFixed(0)} over` : `₹${(budget - spent).toFixed(0)} left`}
-        </span>
+    <div className="card flex items-start gap-4">
+      <div className={`w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 ${color}`}>
+        <Icon className="w-5 h-5" />
       </div>
-      <div className="flex items-end gap-2 mb-2">
-        <span className="text-2xl font-bold text-gray-900">₹{spent.toFixed(0)}</span>
-        <span className="text-sm text-gray-400 mb-0.5">of ₹{budget.toFixed(0)}</span>
+      <div>
+        <p className="text-xs font-bold uppercase tracking-widest text-gray-400">{label}</p>
+        <p className="text-2xl font-bold text-gray-900 mt-0.5 tabular-nums">{value}</p>
+        {sub && <p className="text-xs text-gray-400 mt-0.5">{sub}</p>}
       </div>
-      <div className="w-full h-3 bg-gray-100 rounded-full overflow-hidden">
-        <div
-          className={`h-full rounded-full transition-all duration-700 ${color}`}
-          style={{ width: `${pct}%` }}
-        />
-      </div>
-      <p className="text-xs text-gray-400 mt-1">{pct.toFixed(0)}% used this month</p>
     </div>
   );
 }
@@ -55,14 +106,18 @@ function BudgetBar({ spent, budget }: { spent: number; budget: number }) {
 export default function Dashboard() {
   const { user } = useAuth();
   const [purchases, setPurchases] = useState<Purchase[]>([]);
-  const [waste, setWaste] = useState<WasteAlert[]>([]);
-  const [demand, setDemand] = useState<DemandPrediction[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [waste,     setWaste]     = useState<WasteAlert[]>([]);
+  const [demand,    setDemand]    = useState<DemandPrediction[]>([]);
+  const [loading,   setLoading]   = useState(true);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [p, w, d] = await Promise.all([api.getPurchases(200), api.predictWaste(), api.predictDemand()]);
+      const [p, w, d] = await Promise.all([
+        api.getPurchases(200),
+        api.predictWaste(),
+        api.predictDemand(),
+      ]);
       setPurchases(p);
       setWaste(w.waste_alerts);
       setDemand(d.predictions);
@@ -75,20 +130,16 @@ export default function Dashboard() {
 
   useEffect(() => { load(); }, [load]);
 
-  // Category spend
+  /* ── derived stats ── */
   const catSpend: Record<string, number> = {};
-  purchases.forEach((p) => {
-    catSpend[p.category] = (catSpend[p.category] || 0) + p.price;
-  });
+  purchases.forEach((p) => { catSpend[p.category] = (catSpend[p.category] || 0) + p.price; });
   const spendData = Object.entries(catSpend).map(([category, spend]) => ({
-    category,
-    spend: parseFloat(spend.toFixed(2)),
+    category, spend: parseFloat(spend.toFixed(2)),
   }));
 
-  // Monthly spend trend
   const monthlyMap: Record<string, number> = {};
   purchases.forEach((p) => {
-    const month = p.purchase_date.slice(0, 7); // YYYY-MM
+    const month = p.purchase_date.slice(0, 7);
     monthlyMap[month] = (monthlyMap[month] || 0) + p.price;
   });
   const monthlyTrend = Object.entries(monthlyMap)
@@ -98,42 +149,46 @@ export default function Dashboard() {
       spend: parseFloat(spend.toFixed(2)),
     }));
 
-  // Current month spend vs budget
-  const thisMonth = new Date().toISOString().slice(0, 7);
+  const thisMonth         = new Date().toISOString().slice(0, 7);
   const currentMonthSpend = purchases
     .filter((p) => p.purchase_date.startsWith(thisMonth))
     .reduce((a, p) => a + p.price, 0);
-  const budget = user?.monthly_budget ?? 3000;
-
-  const totalSpend = purchases.reduce((a, p) => a + p.price, 0);
+  const budget   = user?.monthly_budget ?? 3000;
   const highRisk = waste.filter((w) => w.risk_level === "High").length;
-  const avgConf = waste.length
+  const avgConf  = waste.length
     ? waste.reduce((a, w) => a + (1 - w.waste_probability_tabnet), 0) / waste.length
     : 0;
 
   const purchaseCols = [
     { key: "purchase_date", header: "Date" },
-    { key: "item", header: "Item" },
-    { key: "category", header: "Category",
+    { key: "item",          header: "Item" },
+    {
+      key: "category",
+      header: "Category",
       render: (r: Purchase) => (
-        <span className="px-2 py-0.5 rounded text-xs font-medium text-white" style={{ background: CATEGORY_COLORS[r.category] || "#6b7280" }}>
+        <span
+          className="px-2 py-0.5 rounded text-xs font-medium text-white"
+          style={{ background: CATEGORY_COLORS[r.category] || "#6b7280" }}
+        >
           {r.category}
         </span>
       ),
     },
-    { key: "quantity", header: "Qty", render: (r: Purchase) => r.quantity.toFixed(2) },
-    { key: "price", header: "Price (₹)", render: (r: Purchase) => `₹${r.price.toFixed(2)}` },
+    { key: "quantity", header: "Qty",      render: (r: Purchase) => r.quantity.toFixed(2) },
+    { key: "price",    header: "Price (₹)", render: (r: Purchase) => `₹${r.price.toFixed(2)}` },
   ];
 
   const wasteCols = [
-    { key: "item", header: "Item" },
+    { key: "item",     header: "Item" },
     { key: "category", header: "Category" },
-    { key: "risk_level", header: "Risk",
-      render: (r: WasteAlert) => (
-        <span className={RISK_COLORS[r.risk_level]}>{r.risk_level}</span>
-      ),
+    {
+      key: "risk_level",
+      header: "Risk",
+      render: (r: WasteAlert) => <span className={RISK_COLORS[r.risk_level]}>{r.risk_level}</span>,
     },
-    { key: "waste_probability_tabnet", header: "Probability",
+    {
+      key: "waste_probability_tabnet",
+      header: "Probability",
       render: (r: WasteAlert) => `${(r.waste_probability_tabnet * 100).toFixed(1)}%`,
     },
     { key: "days_until_expiry", header: "Days Left" },
@@ -141,20 +196,28 @@ export default function Dashboard() {
 
   const [chartsOpen, setChartsOpen] = useState(false);
 
+  /* ── Loading skeleton ── */
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin w-8 h-8 border-4 border-green-500 border-t-transparent rounded-full" />
+      <div className="space-y-6 animate-pulse">
+        <div className="h-8 w-56 bg-gray-200 rounded-xl" />
+        <div className="grid grid-cols-3 gap-4">
+          {[1,2,3].map((i) => <div key={i} className="h-32 bg-gray-200 rounded-2xl" />)}
+        </div>
+        <div className="h-48 bg-gray-200 rounded-2xl" />
       </div>
     );
   }
 
-  /* ── Empty state: no purchases yet ── */
+  /* ── Empty state ── */
   if (purchases.length === 0) {
     return (
-      <div className="space-y-6 max-w-3xl mx-auto">
+      <div className="space-y-6 max-w-3xl mx-auto animate-fade-in">
         {/* Welcome hero */}
-        <div className="rounded-2xl bg-gradient-to-br from-green-700 to-green-500 text-white p-8">
+        <div
+          className="rounded-2xl text-white p-8"
+          style={{ background: "linear-gradient(135deg, #1e5c2a 0%, #2d7a3a 100%)" }}
+        >
           <h1 className="text-2xl font-bold mb-1">
             Welcome{user ? `, ${user.name.split(" ")[0]}` : ""}! 👋
           </h1>
@@ -165,31 +228,34 @@ export default function Dashboard() {
           {/* Step progress */}
           <div className="flex items-start gap-0 mb-8">
             {[
-              { n: 1, label: "Add first purchase", active: true },
+              { n: 1, label: "Add first purchase",   active: true },
               { n: 2, label: "Get first prediction", active: false },
-              { n: 3, label: "Track your savings", active: false },
+              { n: 3, label: "Track your savings",   active: false },
             ].map((step, i, arr) => (
               <div key={step.n} className="flex items-start flex-1">
                 <div className="flex flex-col items-center flex-1">
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 ${
-                    step.active ? "bg-white text-green-700 shadow-md" : "bg-green-600 text-green-200 border-2 border-green-400"
-                  }`}>
+                  <div
+                    className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 transition-all ${
+                      step.active
+                        ? "bg-white text-green-700 shadow-md ring-4 ring-green-400/30"
+                        : "bg-green-600/50 text-green-200 border-2 border-green-500/50"
+                    }`}
+                  >
                     {step.n}
                   </div>
                   <p className={`text-xs mt-2 text-center leading-tight ${step.active ? "text-white font-semibold" : "text-green-300"}`}>
                     {step.label}
                   </p>
                 </div>
-                {i < arr.length - 1 && (
-                  <div className="h-0.5 bg-green-500 flex-1 mt-4 mx-1" />
-                )}
+                {i < arr.length - 1 && <div className="h-0.5 bg-green-500/50 flex-1 mt-4 mx-1" />}
               </div>
             ))}
           </div>
 
           <Link
             href="/add"
-            className="inline-flex items-center gap-2 bg-white text-green-700 font-bold px-6 py-3 rounded-xl text-sm hover:bg-green-50 transition-colors"
+            className="inline-flex items-center gap-2 bg-white font-bold px-6 py-3 rounded-xl text-sm hover:bg-green-50 transition-colors"
+            style={{ color: "var(--green-primary)" }}
           >
             <ShoppingCart className="w-4 h-4" /> Add Your First Purchase <ArrowRight className="w-4 h-4" />
           </Link>
@@ -198,31 +264,31 @@ export default function Dashboard() {
         {/* Locked stat cards */}
         <div className="grid grid-cols-3 gap-4">
           {[
-            { label: "Monthly Budget", value: `₹0 / ₹${(user?.monthly_budget ?? 8000).toLocaleString()}`, sub: "Start logging to track" },
+            { label: "Monthly Budget",    value: `₹0 / ₹${(user?.monthly_budget ?? 8000).toLocaleString()}`, sub: "Start logging to track" },
             { label: "Waste Risk Alerts", value: "—", sub: "Add items to monitor" },
-            { label: "Freshness Score", value: "—", sub: "Unlocks with data" },
-          ].map((c) => (
-            <div key={c.label} className="card opacity-50 relative overflow-hidden">
+            { label: "Freshness Score",   value: "—", sub: "Unlocks with data" },
+          ].map((c, i) => (
+            <div key={c.label} className={`card opacity-50 relative overflow-hidden stagger-${i + 1} animate-slide-up`}>
               <span className="absolute top-2 right-2 text-xs bg-gray-100 text-gray-400 px-2 py-0.5 rounded-full">
                 Unlocks with data
               </span>
-              <p className="text-xs text-gray-400 font-medium uppercase tracking-wide mb-1">{c.label}</p>
+              <p className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-1">{c.label}</p>
               <p className="text-xl font-bold text-gray-700">{c.value}</p>
               <p className="text-xs text-gray-400 mt-0.5">{c.sub}</p>
             </div>
           ))}
         </div>
 
-        {/* What happens next */}
-        <div className="card border-dashed border-gray-300 bg-gray-50">
+        {/* What unlocks next */}
+        <div className="card border-dashed" style={{ borderColor: "#d4cfc8", background: "var(--bg-page)" }}>
           <h3 className="text-sm font-semibold text-gray-700 mb-4">What unlocks as you log more?</h3>
           <div className="grid grid-cols-3 gap-4 text-center">
             {[
-              { emoji: "🛒", milestone: "5+ items", desc: "Waste risk predictions appear" },
+              { emoji: "🛒", milestone: "5+ items",  desc: "Waste risk predictions appear" },
               { emoji: "📊", milestone: "10+ items", desc: "Shopping list gets personalised" },
-              { emoji: "💰", milestone: "1 month",  desc: "Overspend detection saves ₹500+/mo" },
-            ].map((m) => (
-              <div key={m.milestone}>
+              { emoji: "💰", milestone: "1 month",   desc: "Overspend detection saves ₹500+/mo" },
+            ].map((m, i) => (
+              <div key={m.milestone} className={`animate-slide-up stagger-${i + 4}`}>
                 <div className="text-3xl mb-2">{m.emoji}</div>
                 <div className="text-xs font-bold text-gray-700 mb-1">{m.milestone}</div>
                 <div className="text-xs text-gray-500 leading-snug">{m.desc}</div>
@@ -235,69 +301,90 @@ export default function Dashboard() {
   }
 
   /* ── With-data state ── */
-  const hour = new Date().getHours();
+  const hour     = new Date().getHours();
   const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
-  const today = new Date().toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long" });
+  const today    = new Date().toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long" });
 
-  // Merge waste High/Medium alerts + demand items due in ≤2 days into a single prioritised action list
-  type TopAction = { key: string; title: string; subtitle: string; badge: string; badgeColor: string };
+  type TopAction = { key: string; title: string; subtitle: string; badge: string; badgeColor: string; urgent: boolean };
   const topActions: TopAction[] = [
     ...waste
       .filter((w) => w.risk_level === "High" || w.risk_level === "Medium")
       .map((w) => ({
-        key: `waste-${w.item}`,
-        title: `${w.item} — use before it spoils`,
-        subtitle: `${w.recommendation} · ${w.days_until_expiry} day${w.days_until_expiry !== 1 ? "s" : ""} left`,
-        badge: w.risk_level,
+        key:        `waste-${w.item}`,
+        title:      `${w.item} — use before it spoils`,
+        subtitle:   `${w.recommendation} · ${w.days_until_expiry} day${w.days_until_expiry !== 1 ? "s" : ""} left`,
+        badge:      w.risk_level,
         badgeColor: w.risk_level === "High" ? "bg-red-100 text-red-700" : "bg-orange-100 text-orange-700",
+        urgent:     w.risk_level === "High",
       })),
     ...demand
       .filter((d) => d.days_until_next <= 2)
       .map((d) => ({
-        key: `demand-${d.item}`,
-        title: `${d.item} — time to restock`,
-        subtitle: `${d.urgency_message} · Buy ${d.recommended_quantity.toFixed(1)} kg · ₹${d.estimated_cost_inr.toFixed(0)}`,
-        badge: "Buy today",
+        key:        `demand-${d.item}`,
+        title:      `${d.item} — time to restock`,
+        subtitle:   `${d.urgency_message} · Buy ${d.recommended_quantity.toFixed(1)} kg · ₹${d.estimated_cost_inr.toFixed(0)}`,
+        badge:      "Buy today",
         badgeColor: "bg-blue-100 text-blue-700",
+        urgent:     true,
       })),
   ].slice(0, 3);
 
   return (
     <div className="space-y-6">
+
       {/* Greeting */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between animate-fade-in">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">
             {greeting}{user ? `, ${user.name.split(" ")[0]}` : ""} ☀️
           </h1>
-          <p className="text-sm text-gray-500 mt-0.5">{today}</p>
+          <p className="text-sm text-gray-400 mt-0.5">{today}</p>
         </div>
         <button onClick={load} className="btn-secondary text-sm">Refresh</button>
       </div>
 
-      {/* ⚡ Top actions today — waste alerts + urgent restocks */}
+      {/* ⚡ Top actions today */}
       {topActions.length > 0 && (
-        <div className="card border-yellow-200 bg-yellow-50">
-          <h2 className="text-sm font-semibold text-yellow-800 flex items-center gap-1.5 mb-3">
-            <Zap className="w-4 h-4" /> Today&apos;s top {topActions.length} action{topActions.length > 1 ? "s" : ""}
+        <div
+          className="card animate-slide-up"
+          style={{ background: "#fffbf2", borderColor: "#f0d9a8" }}
+        >
+          <h2
+            className="text-sm font-bold flex items-center gap-2 mb-3"
+            style={{ color: "#92600a" }}
+          >
+            <Zap className="w-4 h-4" />
+            Today&apos;s top {topActions.length} action{topActions.length > 1 ? "s" : ""}
           </h2>
           <div className="space-y-2">
             {topActions.map((action, i) => (
-              <div key={action.key} className="flex items-start gap-3 bg-white rounded-xl p-3 border border-yellow-100">
-                <span className="w-6 h-6 rounded-full bg-yellow-100 text-yellow-700 text-xs font-bold flex items-center justify-center flex-shrink-0 mt-0.5">
+              <div
+                key={action.key}
+                className={`flex items-start gap-3 bg-white rounded-xl p-3 border border-yellow-100 animate-slide-up stagger-${i + 1}`}
+              >
+                <span
+                  className="w-6 h-6 rounded-full text-xs font-bold flex items-center justify-center flex-shrink-0 mt-0.5"
+                  style={{ background: "#f59e0b", color: "white" }}
+                >
                   {i + 1}
                 </span>
                 <div className="flex-1 min-w-0">
                   <p className="font-semibold text-gray-800 text-sm">{action.title}</p>
                   <p className="text-xs text-gray-500 mt-0.5">{action.subtitle}</p>
                 </div>
-                <span className={`text-xs px-2 py-0.5 rounded-full font-semibold flex-shrink-0 ${action.badgeColor}`}>
+                <span
+                  className={`text-xs px-2.5 py-0.5 rounded-full font-semibold flex-shrink-0 ${action.badgeColor} ${action.urgent ? "animate-urgent" : ""}`}
+                >
                   {action.badge}
                 </span>
               </div>
             ))}
           </div>
-          <Link href="/insights" className="flex items-center gap-1 mt-3 text-xs text-green-700 font-semibold hover:underline">
+          <Link
+            href="/insights"
+            className="flex items-center gap-1 mt-3 text-xs font-semibold hover:underline"
+            style={{ color: "var(--green-primary)" }}
+          >
             See all insights <ArrowRight className="w-3 h-3" />
           </Link>
         </div>
@@ -305,45 +392,61 @@ export default function Dashboard() {
 
       {/* Stats row */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <BudgetBar spent={currentMonthSpend} budget={budget} />
-        <div className="card flex items-start gap-4">
-          <div className="w-11 h-11 rounded-xl flex items-center justify-center bg-red-50 text-red-600 flex-shrink-0">
-            <AlertTriangle className="w-5 h-5" />
-          </div>
-          <div>
-            <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">Waste Risk</p>
-            <p className="text-2xl font-bold text-gray-800">{highRisk}</p>
-            <p className="text-xs text-gray-400 mt-0.5">{highRisk === 0 ? "All items fresh" : `item${highRisk > 1 ? "s" : ""} need attention`}</p>
-          </div>
+        <div className="animate-slide-up stagger-1">
+          <BudgetBar spent={currentMonthSpend} budget={budget} />
         </div>
-        <div className="card flex items-start gap-4">
-          <div className="w-11 h-11 rounded-xl flex items-center justify-center bg-purple-50 text-purple-600 flex-shrink-0">
-            <TrendingUp className="w-5 h-5" />
-          </div>
-          <div>
-            <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">Freshness</p>
-            <p className="text-2xl font-bold text-gray-800">{(avgConf * 100).toFixed(0)}%</p>
-            <p className="text-xs text-gray-400 mt-0.5">avg across all items</p>
-          </div>
+        <div className="animate-slide-up stagger-2">
+          <StatCard
+            icon={AlertTriangle}
+            label="Waste Risk"
+            value={<CountUp to={highRisk} />}
+            sub={highRisk === 0 ? "All items fresh ✓" : `item${highRisk > 1 ? "s" : ""} need attention`}
+            color="bg-red-50 text-red-600"
+          />
+        </div>
+        <div className="animate-slide-up stagger-3">
+          <StatCard
+            icon={TrendingUp}
+            label="Freshness"
+            value={<><CountUp to={avgConf * 100} decimals={0} />%</>}
+            sub="avg across all items"
+            color="bg-purple-50 text-purple-600"
+          />
         </div>
       </div>
 
-      {/* Two-column: Recent purchases + Upcoming needs */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {/* Two columns: Recent purchases + Waste risk */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 animate-slide-up stagger-4">
         <div className="card">
-          <h2 className="text-sm font-semibold text-gray-700 mb-3">Recent Purchases</h2>
-          <Table columns={purchaseCols as never} data={purchases.slice(0, 6) as never} emptyMessage="No purchases recorded yet." />
+          <h2 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Recent Purchases</h2>
+          <Table
+            columns={purchaseCols as never}
+            data={purchases.slice(0, 6) as never}
+            emptyMessage="No purchases recorded yet."
+          />
           {purchases.length > 6 && (
-            <Link href="/add" className="flex items-center gap-1 mt-3 text-xs text-green-700 font-semibold hover:underline">
+            <Link
+              href="/add"
+              className="flex items-center gap-1 mt-3 text-xs font-semibold hover:underline"
+              style={{ color: "var(--green-primary)" }}
+            >
               View all {purchases.length} purchases <ArrowRight className="w-3 h-3" />
             </Link>
           )}
         </div>
         <div className="card">
-          <h2 className="text-sm font-semibold text-gray-700 mb-3">Items at Waste Risk</h2>
-          <Table columns={wasteCols as never} data={waste.filter((w) => w.risk_level !== "Low").slice(0, 6) as never} emptyMessage="No waste alerts — all items look fresh!" />
+          <h2 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Items at Waste Risk</h2>
+          <Table
+            columns={wasteCols as never}
+            data={waste.filter((w) => w.risk_level !== "Low").slice(0, 6) as never}
+            emptyMessage="No waste alerts — all items look fresh! ✓"
+          />
           {waste.filter((w) => w.risk_level !== "Low").length > 0 && (
-            <Link href="/recommendations" className="flex items-center gap-1 mt-3 text-xs text-green-700 font-semibold hover:underline">
+            <Link
+              href="/recommendations"
+              className="flex items-center gap-1 mt-3 text-xs font-semibold hover:underline"
+              style={{ color: "var(--green-primary)" }}
+            >
               View full shopping list <ArrowRight className="w-3 h-3" />
             </Link>
           )}
@@ -351,25 +454,31 @@ export default function Dashboard() {
       </div>
 
       {/* Charts — collapsed by default */}
-      <div className="card">
+      <div className="card animate-slide-up stagger-5">
         <button
           onClick={() => setChartsOpen((o) => !o)}
           className="flex items-center justify-between w-full text-left"
         >
-          <span className="text-sm font-semibold text-gray-700">Spending Trends</span>
-          <span className="flex items-center gap-1 text-xs text-green-700 font-medium">
+          <span className="text-xs font-bold uppercase tracking-widest text-gray-400">Spending Trends</span>
+          <span
+            className="flex items-center gap-1 text-xs font-semibold"
+            style={{ color: "var(--green-primary)" }}
+          >
             {chartsOpen ? "Hide charts" : "Show charts"}
-            {chartsOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+            {chartsOpen
+              ? <ChevronUp className="w-4 h-4" />
+              : <ChevronDown className="w-4 h-4" />
+            }
           </span>
         </button>
 
         {chartsOpen && (
-          <div className="mt-4 space-y-6">
+          <div className="mt-4 space-y-6 animate-fade-in">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <BarChartComponent
                 data={spendData}
                 xKey="category"
-                bars={[{ key: "spend", color: "#22c55e", name: "Spend (₹)" }]}
+                bars={[{ key: "spend", color: "#2d7a3a", name: "Spend (₹)" }]}
                 title="Spending by Category"
               />
               {(() => {
@@ -384,7 +493,7 @@ export default function Dashboard() {
                   <BarChartComponent
                     data={riskData}
                     xKey="level"
-                    bars={[{ key: "count", color: "#22c55e", name: "Items" }]}
+                    bars={[{ key: "count", color: "#2d7a3a", name: "Items" }]}
                     title="Waste Risk Distribution"
                     height={250}
                   />
@@ -395,7 +504,7 @@ export default function Dashboard() {
               <LineChartComponent
                 data={monthlyTrend}
                 xKey="month"
-                lines={[{ key: "spend", color: "#22c55e", name: "Monthly Spend (₹)" }]}
+                lines={[{ key: "spend", color: "#2d7a3a", name: "Monthly Spend (₹)" }]}
                 title="Month-over-Month Spend Trend"
                 height={280}
               />
@@ -403,6 +512,7 @@ export default function Dashboard() {
           </div>
         )}
       </div>
+
     </div>
   );
 }

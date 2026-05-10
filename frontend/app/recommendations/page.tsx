@@ -41,7 +41,10 @@ function DemandCard({ pred, urgencyGroup, onLogAsBought }: {
       : <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700 font-semibold flex-shrink-0">In {pred.days_until_next}d</span>;
 
   return (
-    <div className={`flex items-center gap-3 p-4 bg-white border border-gray-200 rounded-xl hover:border-green-300 transition-colors ${borderColor}`}>
+    <div
+      className={`flex items-center gap-3 p-4 bg-white rounded-xl transition-all duration-200 hover:shadow-md ${borderColor}`}
+      style={{ border: "1.5px solid #e5e0d8" }}
+    >
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap mb-0.5">
           <span className="font-semibold text-gray-800">{pred.item}</span>
@@ -182,8 +185,8 @@ function LogAsBoughtModal({
             />
           </div>
           <div className="flex gap-2 pt-1">
-            <button type="button" onClick={onClose} className="flex-1 btn-secondary">Cancel</button>
-            <button type="submit" disabled={loading} className="flex-1 btn-primary disabled:opacity-60">
+            <button type="button" onClick={onClose} className="flex-1 btn-secondary justify-center">Cancel</button>
+            <button type="submit" disabled={loading} className="flex-1 btn-primary justify-center disabled:opacity-60">
               {loading ? "Saving…" : "Confirm"}
             </button>
           </div>
@@ -195,6 +198,12 @@ function LogAsBoughtModal({
 
 export default function RecommendationsPage() {
   const [tab, setTab] = useState<Tab>("demand");
+  const [prevTab, setPrevTab] = useState<Tab>("demand");
+
+  function switchTab(t: Tab) {
+    setPrevTab(tab);
+    setTab(t);
+  }
   const [demand, setDemand] = useState<DemandPrediction[]>([]);
   const [waste, setWaste] = useState<WasteAlert[]>([]);
   const [budget, setBudget] = useState<OptimizationResult | null>(null);
@@ -295,28 +304,34 @@ export default function RecommendationsPage() {
       )}
 
       {logToast && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-green-700 text-white text-sm font-medium px-5 py-3 rounded-xl shadow-lg flex items-center gap-2">
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 text-white text-sm font-semibold px-5 py-3 rounded-2xl shadow-xl flex items-center gap-2 animate-slide-up"
+          style={{ background: "var(--green-primary)" }}>
           <Check className="w-4 h-4" /> {logToast}
         </div>
       )}
 
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between animate-fade-in">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-            <ShoppingBag className="w-6 h-6 text-green-600" /> Shopping List
+            <ShoppingBag className="w-6 h-6" style={{ color: "var(--green-primary)" }} /> Shopping List
           </h1>
-          <p className="text-gray-500 text-sm mt-1">Based on your household&apos;s patterns · Updated today</p>
+          <p className="text-gray-400 text-sm mt-1">Based on your household&apos;s patterns · Updated today</p>
         </div>
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 bg-gray-100 p-1 rounded-xl w-fit">
+      <div
+        className="flex gap-1 p-1 rounded-2xl w-fit animate-fade-in"
+        style={{ background: "#ede8e0" }}
+      >
         {tabs.map(({ id, label, icon: Icon }) => (
           <button
             key={id}
-            onClick={() => setTab(id)}
-            className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-              tab === id ? "bg-white shadow text-green-700" : "text-gray-600 hover:text-gray-800"
+            onClick={() => switchTab(id)}
+            className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold transition-all duration-200 ${
+              tab === id
+                ? "bg-white shadow text-green-700"
+                : "text-gray-500 hover:text-gray-700"
             }`}
           >
             <Icon className="w-4 h-4" /> {label}
@@ -334,25 +349,25 @@ export default function RecommendationsPage() {
         </div>
       ) : (
         <>
-          {/* Buy Soon tab — grouped by urgency, no ML chart */}
+          {/* Buy Soon tab — grouped by urgency */}
           {tab === "demand" && (
-            <div className="space-y-6">
+            <div className="space-y-6 animate-fade-in">
               {/* Summary strip */}
               {demand.length > 0 && (
-                <div className="flex gap-3 flex-wrap">
+                <div className="flex gap-2 flex-wrap">
                   {todayItems.length > 0 && (
-                    <span className="text-xs font-semibold bg-red-50 text-red-700 px-3 py-1.5 rounded-lg">
-                      🔴 {todayItems.length} item{todayItems.length > 1 ? "s" : ""} — buy today
+                    <span className="text-xs font-semibold bg-red-50 text-red-700 px-3.5 py-1.5 rounded-full border border-red-100">
+                      🔴 {todayItems.length} — buy today
                     </span>
                   )}
                   {weekItems.length > 0 && (
-                    <span className="text-xs font-semibold bg-orange-50 text-orange-700 px-3 py-1.5 rounded-lg">
-                      🟡 {weekItems.length} item{weekItems.length > 1 ? "s" : ""} — buy this week
+                    <span className="text-xs font-semibold bg-orange-50 text-orange-700 px-3.5 py-1.5 rounded-full border border-orange-100">
+                      🟡 {weekItems.length} — this week
                     </span>
                   )}
                   {laterItems.length > 0 && (
-                    <span className="text-xs font-semibold bg-green-50 text-green-700 px-3 py-1.5 rounded-lg">
-                      🟢 {laterItems.length} item{laterItems.length > 1 ? "s" : ""} — buy later
+                    <span className="text-xs font-semibold bg-green-50 text-green-700 px-3.5 py-1.5 rounded-full border border-green-100">
+                      🟢 {laterItems.length} — buy later
                     </span>
                   )}
                 </div>
@@ -360,33 +375,45 @@ export default function RecommendationsPage() {
 
               {todayItems.length > 0 && (
                 <div>
-                  <h2 className="text-sm font-bold text-red-600 uppercase tracking-wide mb-3">Buy Today</h2>
+                  <h2 className="text-xs font-bold text-red-600 uppercase tracking-widest mb-3">Buy Today</h2>
                   <div className="space-y-2">
-                    {todayItems.map((pred) => <DemandCard key={pred.item} pred={pred} urgencyGroup="today" onLogAsBought={setLogModal} />)}
+                    {todayItems.map((pred, i) => (
+                      <div key={pred.item} className={`animate-slide-up stagger-${Math.min(i + 1, 8)}`}>
+                        <DemandCard pred={pred} urgencyGroup="today" onLogAsBought={setLogModal} />
+                      </div>
+                    ))}
                   </div>
                 </div>
               )}
 
               {weekItems.length > 0 && (
                 <div>
-                  <h2 className="text-sm font-bold text-orange-500 uppercase tracking-wide mb-3">Buy This Week</h2>
+                  <h2 className="text-xs font-bold text-orange-500 uppercase tracking-widest mb-3">Buy This Week</h2>
                   <div className="space-y-2">
-                    {weekItems.map((pred) => <DemandCard key={pred.item} pred={pred} urgencyGroup="week" onLogAsBought={setLogModal} />)}
+                    {weekItems.map((pred, i) => (
+                      <div key={pred.item} className={`animate-slide-up stagger-${Math.min(i + 1, 8)}`}>
+                        <DemandCard pred={pred} urgencyGroup="week" onLogAsBought={setLogModal} />
+                      </div>
+                    ))}
                   </div>
                 </div>
               )}
 
               {laterItems.length > 0 && (
                 <div>
-                  <h2 className="text-sm font-bold text-green-600 uppercase tracking-wide mb-3">Buy Later</h2>
-                  <div className="space-y-2 opacity-75">
-                    {laterItems.map((pred) => <DemandCard key={pred.item} pred={pred} urgencyGroup="later" onLogAsBought={setLogModal} />)}
+                  <h2 className="text-xs font-bold text-green-600 uppercase tracking-widest mb-3">Buy Later</h2>
+                  <div className="space-y-2 opacity-80">
+                    {laterItems.map((pred, i) => (
+                      <div key={pred.item} className={`animate-slide-up stagger-${Math.min(i + 1, 8)}`}>
+                        <DemandCard pred={pred} urgencyGroup="later" onLogAsBought={setLogModal} />
+                      </div>
+                    ))}
                   </div>
                 </div>
               )}
 
               {demand.length === 0 && (
-                <div className="card text-center text-gray-500 py-12">
+                <div className="card text-center text-gray-400 py-12 animate-fade-in">
                   Add a few purchases to generate personalised shopping predictions.
                 </div>
               )}
@@ -395,25 +422,29 @@ export default function RecommendationsPage() {
 
           {/* Use Before Spoil tab */}
           {tab === "waste" && (
-            <div className="space-y-6">
+            <div className="space-y-6 animate-fade-in">
               <div className="grid grid-cols-3 gap-4">
-                {(["High", "Medium", "Low"] as const).map((level) => {
+                {(["High", "Medium", "Low"] as const).map((level, i) => {
                   const count = waste.filter((w) => w.risk_level === level).length;
-                  const colors: Record<string, string> = {
-                    High: "border-red-200 bg-red-50 text-red-700",
-                    Medium: "border-orange-200 bg-orange-50 text-orange-700",
-                    Low: "border-green-200 bg-green-50 text-green-700",
+                  const styles: Record<string, { bg: string; text: string; border: string }> = {
+                    High:   { bg: "#fef2f2", text: "#b91c1c", border: "#fecaca" },
+                    Medium: { bg: "#fff7ed", text: "#c2410c", border: "#fed7aa" },
+                    Low:    { bg: "#f0fdf4", text: "#15803d", border: "#bbf7d0" },
                   };
                   return (
-                    <div key={level} className={`card text-center border ${colors[level]}`}>
-                      <p className="text-3xl font-bold">{count}</p>
-                      <p className="text-xs font-semibold mt-1">{level} Risk</p>
+                    <div
+                      key={level}
+                      className={`card text-center animate-slide-up stagger-${i + 1}`}
+                      style={{ background: styles[level].bg, borderColor: styles[level].border, color: styles[level].text }}
+                    >
+                      <p className="text-3xl font-bold tabular-nums">{count}</p>
+                      <p className="text-xs font-bold uppercase tracking-widest mt-1">{level} Risk</p>
                     </div>
                   );
                 })}
               </div>
-              <div className="card">
-                <h2 className="text-sm font-semibold text-gray-800 mb-4">Items to Use Soon</h2>
+              <div className="card animate-slide-up stagger-4">
+                <h2 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-4">Items to Use Soon</h2>
                 <Table columns={wasteCols as never} data={waste as never} />
               </div>
             </div>
@@ -448,7 +479,7 @@ export default function RecommendationsPage() {
                     />
                   </div>
                   <div className="flex items-end">
-                    <button onClick={loadBudget} className="btn-primary w-full">Optimize</button>
+                    <button onClick={loadBudget} className="btn-primary">Optimize</button>
                   </div>
                 </div>
                 <div>

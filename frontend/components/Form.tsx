@@ -220,7 +220,7 @@ export default function PurchaseForm({
         </div>
       </div>
 
-      <button type="submit" disabled={loading} className="btn-primary w-full disabled:opacity-60 disabled:cursor-not-allowed">
+      <button type="submit" disabled={loading} className="btn-primary disabled:opacity-60 disabled:cursor-not-allowed px-8 py-3">
         {loading ? "Adding…" : "Add Purchase"}
       </button>
     </form>
