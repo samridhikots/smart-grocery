@@ -1,10 +1,10 @@
 "use client";
 import { useEffect, useState, useCallback } from "react";
 import { api, DemandPrediction, WasteAlert, OptimizationResult, OptimizedItem } from "@/services/api";
-import { BarChartComponent } from "@/components/Chart";
 import Table from "@/components/Table";
-import { TrendingUp, Trash2, DollarSign, Star, Copy, Share2, Check, HelpCircle } from "lucide-react";
+import { ShoppingBag, Trash2, DollarSign, Copy, Share2, Check, HelpCircle, ArrowRight } from "lucide-react";
 import { RISK_COLORS, CATEGORIES } from "@/lib/constants";
+import { useRouter } from "next/navigation";
 
 type Tab = "demand" | "waste" | "budget";
 
@@ -21,83 +21,85 @@ function explainDemand(pred: DemandPrediction): ReasonBadge[] {
   return reasons;
 }
 
-function DemandCard({ pred }: { pred: DemandPrediction }) {
+function DemandCard({ pred, urgencyGroup }: { pred: DemandPrediction; urgencyGroup: "today" | "week" | "later" }) {
   const [showWhy, setShowWhy] = useState(false);
   const reasons = explainDemand(pred);
-  const urgencyColor = pred.days_until_next <= 2 ? "text-red-600" : pred.days_until_next <= 5 ? "text-orange-500" : "text-gray-500";
+  const router = useRouter();
+
+  const borderColor =
+    urgencyGroup === "today" ? "border-l-4 border-l-red-400" :
+    urgencyGroup === "week"  ? "border-l-4 border-l-orange-400" :
+                               "border-l-4 border-l-green-400";
+
+  const badge =
+    urgencyGroup === "today"
+      ? <span className="text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-700 font-semibold flex-shrink-0">Today</span>
+      : urgencyGroup === "week"
+      ? <span className="text-xs px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 font-semibold flex-shrink-0">In {pred.days_until_next}d</span>
+      : <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700 font-semibold flex-shrink-0">In {pred.days_until_next}d</span>;
+
+  function handleLogAsBought() {
+    router.push(`/add?item=${encodeURIComponent(pred.item)}&quantity=${pred.recommended_quantity.toFixed(1)}`);
+  }
 
   return (
-    <div className="p-4 border border-gray-200 rounded-xl hover:border-green-300 transition-colors bg-white">
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-semibold text-gray-800">{pred.item}</span>
-            <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700 font-medium">{pred.category}</span>
-            {pred.brand && pred.brand !== "Local" && (
-              <span className="text-xs text-gray-400">{pred.brand}</span>
-            )}
+    <div className={`flex items-center gap-3 p-4 bg-white border border-gray-200 rounded-xl hover:border-green-300 transition-colors ${borderColor}`}>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 flex-wrap mb-0.5">
+          <span className="font-semibold text-gray-800">{pred.item}</span>
+          <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 font-medium">{pred.category}</span>
+          {pred.brand && pred.brand !== "Local" && (
+            <span className="text-xs text-gray-400">{pred.brand}</span>
+          )}
+        </div>
+        <p className="text-xs text-gray-500">
+          Buy {pred.recommended_quantity.toFixed(1)} kg · ₹{pred.estimated_cost_inr.toFixed(0)}
+        </p>
+
+        {/* Explain badges */}
+        {reasons.length > 0 && (
+          <div className="flex flex-wrap gap-1 mt-1.5">
+            {reasons.map((r, i) => (
+              <span key={i} className={`text-xs px-2 py-0.5 rounded-full font-medium ${r.color}`}>{r.label}</span>
+            ))}
           </div>
-          <p className={`text-xs mt-1 font-medium ${urgencyColor}`}>{pred.urgency_message}</p>
-        </div>
-        <div className="text-right flex-shrink-0">
-          <p className="text-sm font-bold text-gray-800">×{pred.recommended_quantity.toFixed(1)}</p>
-          <p className="text-xs text-gray-500">₹{pred.estimated_cost_inr.toFixed(0)}</p>
-        </div>
+        )}
+
+        <button
+          onClick={() => setShowWhy(!showWhy)}
+          className="flex items-center gap-1 mt-1.5 text-xs text-green-600 hover:text-green-800 font-medium"
+        >
+          <HelpCircle className="w-3 h-3" /> Why this?
+        </button>
+
+        {showWhy && (
+          <div className="mt-2 p-3 bg-gray-50 rounded-lg border border-gray-200 text-xs space-y-1.5">
+            {[
+              ["Historical avg", `×${pred.historical_avg.toFixed(2)}`],
+              ["XGBoost prediction", `×${pred.predicted_quantity_xgboost.toFixed(2)}`],
+              ["Seasonal factor", `${pred.seasonal_factor.toFixed(2)}×`],
+              ["Festival month", pred.is_festival_month ? "Yes" : "No"],
+              ["Unit price", `₹${pred.unit_price_inr.toFixed(0)}/unit`],
+              ["Confidence", `${(pred.confidence * 100).toFixed(0)}%`],
+            ].map(([k, v]) => (
+              <div key={k} className="flex justify-between">
+                <span className="text-gray-500">{k}</span>
+                <span className="font-medium text-gray-700">{v}</span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
-      {/* Confidence bar */}
-      <div className="flex items-center gap-2 mt-2">
-        <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-          <div className="h-full bg-green-500 rounded-full" style={{ width: `${pred.confidence * 100}%` }} />
-        </div>
-        <span className="text-xs text-gray-400">{(pred.confidence * 100).toFixed(0)}%</span>
+      <div className="flex flex-col items-end gap-2 flex-shrink-0">
+        {badge}
+        <button
+          onClick={handleLogAsBought}
+          className="flex items-center gap-1 text-xs bg-green-600 text-white px-3 py-1.5 rounded-lg font-semibold hover:bg-green-700 transition-colors whitespace-nowrap"
+        >
+          Log as bought <ArrowRight className="w-3 h-3" />
+        </button>
       </div>
-
-      {/* Explain badges */}
-      {reasons.length > 0 && (
-        <div className="flex flex-wrap gap-1 mt-2">
-          {reasons.map((r, i) => (
-            <span key={i} className={`text-xs px-2 py-0.5 rounded-full font-medium ${r.color}`}>{r.label}</span>
-          ))}
-        </div>
-      )}
-
-      {/* Why button */}
-      <button
-        onClick={() => setShowWhy(!showWhy)}
-        className="flex items-center gap-1 mt-2 text-xs text-green-600 hover:text-green-800 font-medium"
-      >
-        <HelpCircle className="w-3.5 h-3.5" /> Why this recommendation?
-      </button>
-
-      {showWhy && (
-        <div className="mt-2 p-3 bg-gray-50 rounded-lg border border-gray-200 text-xs space-y-1.5">
-          <div className="flex justify-between">
-            <span className="text-gray-500">Historical avg</span>
-            <span className="font-medium text-gray-700">×{pred.historical_avg.toFixed(2)}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-gray-500">XGBoost prediction</span>
-            <span className="font-medium text-gray-700">×{pred.predicted_quantity_xgboost.toFixed(2)}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-gray-500">Seasonal factor</span>
-            <span className="font-medium text-gray-700">{pred.seasonal_factor.toFixed(2)}×</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-gray-500">Festival month</span>
-            <span className="font-medium text-gray-700">{pred.is_festival_month ? "Yes" : "No"}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-gray-500">Unit price</span>
-            <span className="font-medium text-gray-700">₹{pred.unit_price_inr.toFixed(0)}/unit</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-gray-500">Estimated cost</span>
-            <span className="font-medium text-green-700">₹{pred.estimated_cost_inr.toFixed(0)}</span>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
@@ -163,19 +165,10 @@ export default function RecommendationsPage() {
     else loadBudget();
   }, [tab, loadDemand, loadWaste, loadBudget]);
 
-  const topDemand = demand.slice(0, 12);
-  const demandChartData = topDemand.map((d) => ({
-    item: d.item.length > 8 ? d.item.slice(0, 8) : d.item,
-    XGBoost: d.predicted_quantity_xgboost,
-    Linear: d.predicted_quantity_linear,
-    Historical: d.historical_avg,
-  }));
-
-  const wasteChartData = waste.slice(0, 10).map((w) => ({
-    item: w.item.length > 8 ? w.item.slice(0, 8) : w.item,
-    "TabNet Probability": parseFloat((w.waste_probability_tabnet * 100).toFixed(1)),
-    "LR Probability": parseFloat((w.waste_probability_logistic * 100).toFixed(1)),
-  }));
+  // Group demand predictions by urgency
+  const todayItems  = demand.filter((d) => d.days_until_next <= 2);
+  const weekItems   = demand.filter((d) => d.days_until_next > 2 && d.days_until_next <= 7);
+  const laterItems  = demand.filter((d) => d.days_until_next > 7);
 
   const wasteCols = [
     { key: "item", header: "Item" },
@@ -187,18 +180,20 @@ export default function RecommendationsPage() {
   ];
 
   const tabs: { id: Tab; label: string; icon: React.ElementType }[] = [
-    { id: "demand", label: "Demand Forecast", icon: TrendingUp },
-    { id: "waste", label: "Waste Alerts", icon: Trash2 },
-    { id: "budget", label: "Budget Optimizer", icon: DollarSign },
+    { id: "demand", label: "Buy Soon",          icon: ShoppingBag },
+    { id: "waste",  label: "Use Before Spoil",  icon: Trash2 },
+    { id: "budget", label: "Optimise Budget",   icon: DollarSign },
   ];
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-          <Star className="w-6 h-6 text-green-600" /> Recommendations
-        </h1>
-        <p className="text-gray-500 text-sm mt-1">ML-powered predictions and budget optimization.</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+            <ShoppingBag className="w-6 h-6 text-green-600" /> Shopping List
+          </h1>
+          <p className="text-gray-500 text-sm mt-1">Based on your household&apos;s patterns · Updated today</p>
+        </div>
       </div>
 
       {/* Tabs */}
@@ -226,61 +221,86 @@ export default function RecommendationsPage() {
         </div>
       ) : (
         <>
-          {/* Demand tab */}
+          {/* Buy Soon tab — grouped by urgency, no ML chart */}
           {tab === "demand" && (
             <div className="space-y-6">
-              <div className="card">
-                <BarChartComponent
-                  data={demandChartData}
-                  xKey="item"
-                  bars={[
-                    { key: "XGBoost", color: "#22c55e", name: "XGBoost Prediction" },
-                    { key: "Linear", color: "#f59e0b", name: "Linear Prediction" },
-                    { key: "Historical", color: "#3b82f6", name: "Historical Avg" },
-                  ]}
-                  title="Predicted vs Historical Purchase Quantities"
-                  height={320}
-                />
-              </div>
-              <div>
-                <h2 className="text-lg font-semibold text-gray-800 mb-3">All Item Predictions — with Explanations</h2>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                  {demand.map((pred) => <DemandCard key={pred.item} pred={pred} />)}
+              {/* Summary strip */}
+              {demand.length > 0 && (
+                <div className="flex gap-3 flex-wrap">
+                  {todayItems.length > 0 && (
+                    <span className="text-xs font-semibold bg-red-50 text-red-700 px-3 py-1.5 rounded-lg">
+                      🔴 {todayItems.length} item{todayItems.length > 1 ? "s" : ""} — buy today
+                    </span>
+                  )}
+                  {weekItems.length > 0 && (
+                    <span className="text-xs font-semibold bg-orange-50 text-orange-700 px-3 py-1.5 rounded-lg">
+                      🟡 {weekItems.length} item{weekItems.length > 1 ? "s" : ""} — buy this week
+                    </span>
+                  )}
+                  {laterItems.length > 0 && (
+                    <span className="text-xs font-semibold bg-green-50 text-green-700 px-3 py-1.5 rounded-lg">
+                      🟢 {laterItems.length} item{laterItems.length > 1 ? "s" : ""} — buy later
+                    </span>
+                  )}
                 </div>
-              </div>
+              )}
+
+              {todayItems.length > 0 && (
+                <div>
+                  <h2 className="text-sm font-bold text-red-600 uppercase tracking-wide mb-3">Buy Today</h2>
+                  <div className="space-y-2">
+                    {todayItems.map((pred) => <DemandCard key={pred.item} pred={pred} urgencyGroup="today" />)}
+                  </div>
+                </div>
+              )}
+
+              {weekItems.length > 0 && (
+                <div>
+                  <h2 className="text-sm font-bold text-orange-500 uppercase tracking-wide mb-3">Buy This Week</h2>
+                  <div className="space-y-2">
+                    {weekItems.map((pred) => <DemandCard key={pred.item} pred={pred} urgencyGroup="week" />)}
+                  </div>
+                </div>
+              )}
+
+              {laterItems.length > 0 && (
+                <div>
+                  <h2 className="text-sm font-bold text-green-600 uppercase tracking-wide mb-3">Buy Later</h2>
+                  <div className="space-y-2 opacity-75">
+                    {laterItems.map((pred) => <DemandCard key={pred.item} pred={pred} urgencyGroup="later" />)}
+                  </div>
+                </div>
+              )}
+
+              {demand.length === 0 && (
+                <div className="card text-center text-gray-500 py-12">
+                  Add a few purchases to generate personalised shopping predictions.
+                </div>
+              )}
             </div>
           )}
 
-          {/* Waste tab */}
+          {/* Use Before Spoil tab */}
           {tab === "waste" && (
             <div className="space-y-6">
               <div className="grid grid-cols-3 gap-4">
-                {["High", "Medium", "Low"].map((level) => {
+                {(["High", "Medium", "Low"] as const).map((level) => {
                   const count = waste.filter((w) => w.risk_level === level).length;
+                  const colors: Record<string, string> = {
+                    High: "border-red-200 bg-red-50 text-red-700",
+                    Medium: "border-orange-200 bg-orange-50 text-orange-700",
+                    Low: "border-green-200 bg-green-50 text-green-700",
+                  };
                   return (
-                    <div key={level} className="card text-center">
-                      <p className="text-3xl font-bold text-gray-800">{count}</p>
-                      <span className={level === "High" ? "badge-high" : level === "Medium" ? "badge-medium" : "badge-low"}>
-                        {level} Risk
-                      </span>
+                    <div key={level} className={`card text-center border ${colors[level]}`}>
+                      <p className="text-3xl font-bold">{count}</p>
+                      <p className="text-xs font-semibold mt-1">{level} Risk</p>
                     </div>
                   );
                 })}
               </div>
               <div className="card">
-                <BarChartComponent
-                  data={wasteChartData}
-                  xKey="item"
-                  bars={[
-                    { key: "TabNet Probability", color: "#ef4444", name: "TabNet %" },
-                    { key: "LR Probability", color: "#f59e0b", name: "Logistic Reg %" },
-                  ]}
-                  title="Waste Probability by Item (top 10)"
-                  height={300}
-                />
-              </div>
-              <div className="card">
-                <h2 className="text-lg font-semibold text-gray-800 mb-4">Waste Risk Details</h2>
+                <h2 className="text-sm font-semibold text-gray-800 mb-4">Items to Use Soon</h2>
                 <Table columns={wasteCols as never} data={waste as never} />
               </div>
             </div>

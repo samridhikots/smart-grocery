@@ -179,6 +179,13 @@ export default function InsightsPage() {
   const criticalCount = insights.filter((i) => i.severity === "critical").length;
   const highCount     = insights.filter((i) => i.severity === "high").length;
   const top3          = insights.filter((i) => i.severity !== "low").slice(0, 3);
+  const top3Titles    = new Set(top3.map((i) => i.title));
+
+  // Group remaining insights by category (exclude top3 to avoid duplication)
+  const stockInsights  = insights.filter((i) => !top3Titles.has(i.title) && (i.type === "demand" || i.title.toLowerCase().includes("stock") || i.title.toLowerCase().includes("running")));
+  const wasteInsights  = insights.filter((i) => !top3Titles.has(i.title) && (i.type === "waste"  || i.title.toLowerCase().includes("waste") || i.title.toLowerCase().includes("spoil")));
+  const budgetInsights = insights.filter((i) => !top3Titles.has(i.title) && (i.type === "budget" || i.type === "anomaly" || i.title.toLowerCase().includes("spend") || i.title.toLowerCase().includes("budget")));
+  const otherInsights  = insights.filter((i) => !top3Titles.has(i.title) && !stockInsights.includes(i) && !wasteInsights.includes(i) && !budgetInsights.includes(i));
 
   if (loading) {
     return (
@@ -209,6 +216,30 @@ export default function InsightsPage() {
         <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">{error}</div>
       )}
 
+      {/* Summary cards — at the top, not buried mid-page */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <div className="card border-l-4 border-l-red-400">
+          <p className="text-3xl font-bold text-red-600">{criticalCount}</p>
+          <p className="text-xs text-gray-500 mt-1">Critical</p>
+        </div>
+        <div className="card border-l-4 border-l-orange-400">
+          <p className="text-3xl font-bold text-orange-500">{highCount}</p>
+          <p className="text-xs text-gray-500 mt-1">High Priority</p>
+        </div>
+        <div className="card border-l-4 border-l-gray-300">
+          <p className="text-3xl font-bold text-gray-700">{insights.length}</p>
+          <p className="text-xs text-gray-500 mt-1">Total Insights</p>
+        </div>
+        {overspending && (
+          <div className={`card border-l-4 ${overspending.is_anomaly ? "border-l-red-500 bg-red-50" : "border-l-green-500 bg-green-50"}`}>
+            <p className={`text-3xl font-bold ${overspending.is_anomaly ? "text-red-600" : "text-green-600"}`}>
+              {overspending.is_anomaly ? "⚠" : "✓"}
+            </p>
+            <p className="text-xs text-gray-500 mt-1">{overspending.is_anomaly ? "Overspending" : "Spending OK"}</p>
+          </div>
+        )}
+      </div>
+
       {/* Top 3 Actions Today */}
       {top3.length > 0 && (
         <div className="card border-yellow-200 bg-yellow-50">
@@ -221,49 +252,30 @@ export default function InsightsPage() {
                 <span className="w-6 h-6 rounded-full bg-yellow-100 text-yellow-700 text-xs font-bold flex items-center justify-center flex-shrink-0 mt-0.5">
                   {i + 1}
                 </span>
-                <div>
+                <div className="flex-1 min-w-0">
                   <p className="font-semibold text-gray-800 text-sm">{ins.title}</p>
                   <p className="text-xs text-gray-500 mt-0.5">{ins.message}</p>
                 </div>
+                <span className={`text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${
+                  ins.severity === "critical" ? "bg-red-100 text-red-700" :
+                  ins.severity === "high"     ? "bg-orange-100 text-orange-700" :
+                  "bg-gray-100 text-gray-600"
+                }`}>
+                  {ins.severity}
+                </span>
               </div>
             ))}
           </div>
         </div>
       )}
 
-      {/* Summary cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <div className="card text-center">
-          <p className="text-3xl font-bold text-red-600">{criticalCount}</p>
-          <p className="text-xs text-gray-500 mt-1">Critical Alerts</p>
-        </div>
-        <div className="card text-center">
-          <p className="text-3xl font-bold text-orange-500">{highCount}</p>
-          <p className="text-xs text-gray-500 mt-1">High Priority</p>
-        </div>
-        <div className="card text-center">
-          <p className="text-3xl font-bold text-gray-800">{insights.length}</p>
-          <p className="text-xs text-gray-500 mt-1">Total Insights</p>
-        </div>
-        {overspending && (
-          <div className={`card text-center ${overspending.is_anomaly ? "border-red-200 bg-red-50" : "border-green-200 bg-green-50"}`}>
-            <p className={`text-3xl font-bold ${overspending.is_anomaly ? "text-red-600" : "text-green-600"}`}>
-              {overspending.is_anomaly ? "⚠" : "✓"}
-            </p>
-            <p className="text-xs text-gray-500 mt-1">
-              {overspending.is_anomaly ? "Overspending" : "Spending OK"}
-            </p>
-          </div>
-        )}
-      </div>
-
-      {/* Overspending */}
+      {/* Overspending section */}
       {overspending && (
         <div className="card">
-          <h2 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
-            <AlertCircle className="w-5 h-5 text-orange-500" /> Overspending Analysis
+          <h2 className="text-sm font-semibold text-gray-800 mb-4 flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-orange-500" /> Overspending Analysis
           </h2>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
             <div className="bg-gray-50 rounded-xl p-4 text-center">
               <p className="text-2xl font-bold text-gray-800">₹{overspending.monthly_spend.toFixed(0)}</p>
               <p className="text-xs text-gray-500 mt-1">This Month</p>
@@ -276,29 +288,36 @@ export default function InsightsPage() {
               <p className={`text-2xl font-bold ${overspending.overspend_amount > 0 ? "text-red-600" : "text-green-600"}`}>
                 {overspending.overspend_amount > 0 ? "+" : ""}₹{Math.abs(overspending.overspend_amount).toFixed(0)}
               </p>
-              <p className="text-xs text-gray-500 mt-1">
-                {overspending.overspend_amount > 0 ? "Over Average" : "Under Average"}
-              </p>
+              <p className="text-xs text-gray-500 mt-1">{overspending.overspend_amount > 0 ? "Over Average" : "Under Average"}</p>
             </div>
           </div>
-          <p className="text-sm text-gray-600 mb-6 p-3 bg-blue-50 rounded-lg border border-blue-100">
-            {overspending.message}
-          </p>
+          <p className="text-sm text-gray-600 mb-4 p-3 bg-blue-50 rounded-lg border border-blue-100">{overspending.message}</p>
           {overspending.history?.length > 0 && <SpendingHistory history={overspending.history} />}
         </div>
       )}
 
-      {/* All insights */}
-      <div className="space-y-3">
-        <h2 className="text-lg font-semibold text-gray-800">All Insights</h2>
-        {insights.length === 0 ? (
-          <div className="card text-center text-gray-500 py-12">
-            No insights yet. Add a few purchases to generate personalised alerts.
-          </div>
-        ) : (
-          insights.map((insight, i) => <InsightCard key={i} insight={insight} />)
-        )}
-      </div>
+      {/* Grouped insights — no duplicates from top 3 */}
+      {insights.length === 0 ? (
+        <div className="card text-center text-gray-500 py-12">
+          No insights yet. Add a few purchases to generate personalised alerts.
+        </div>
+      ) : (
+        <div className="space-y-6">
+          {[
+            { label: "Stock Alerts",  color: "text-red-600",    items: stockInsights },
+            { label: "Waste Alerts",  color: "text-orange-500", items: wasteInsights },
+            { label: "Budget",        color: "text-green-600",  items: budgetInsights },
+            { label: "Other",         color: "text-gray-500",   items: otherInsights },
+          ].filter((g) => g.items.length > 0).map((group) => (
+            <div key={group.label}>
+              <h3 className={`text-xs font-bold uppercase tracking-widest mb-3 ${group.color}`}>{group.label}</h3>
+              <div className="space-y-2">
+                {group.items.map((insight, i) => <InsightCard key={i} insight={insight} />)}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
