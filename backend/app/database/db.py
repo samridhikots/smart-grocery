@@ -17,10 +17,6 @@ class UserRecord(Base):
     name = Column(String, nullable=False)
     email = Column(String, unique=True, nullable=False, index=True)
     password_hash = Column(String, nullable=False)
-    household_size = Column(Integer, default=3)
-    monthly_budget = Column(Float, default=3000.0)
-    dietary_prefs = Column(String, default="")  # comma-separated e.g. "vegetarian,no-onion"
-    onboarding_complete = Column(Integer, default=0)  # 0=False, 1=True
     created_at = Column(String, nullable=False)
 
 

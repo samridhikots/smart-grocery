@@ -8,12 +8,6 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<void>;
   signup: (name: string, email: string, password: string) => Promise<void>;
   logout: () => void;
-  completeOnboarding: (data: {
-    household_size: number;
-    monthly_budget: number;
-    dietary_prefs: string;
-  }) => Promise<void>;
-  updateUser: (user: User) => void;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -58,22 +52,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null);
   }, []);
 
-  const completeOnboarding = useCallback(
-    async (data: { household_size: number; monthly_budget: number; dietary_prefs: string }) => {
-      const updated = await authApi.onboarding(data);
-      localStorage.setItem("sg_user", JSON.stringify(updated));
-      setUser(updated);
-    },
-    []
-  );
-
-  const updateUser = useCallback((newUser: User) => {
-    localStorage.setItem("sg_user", JSON.stringify(newUser));
-    setUser(newUser);
-  }, []);
-
   return (
-    <AuthContext.Provider value={{ user, isLoading, login, signup, logout, completeOnboarding, updateUser }}>
+    <AuthContext.Provider value={{ user, isLoading, login, signup, logout }}>
       {children}
     </AuthContext.Provider>
   );

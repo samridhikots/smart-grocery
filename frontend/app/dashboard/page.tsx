@@ -1,12 +1,10 @@
 "use client";
 import { useEffect, useState, useCallback } from "react";
-import { api, Purchase, WasteAlert, DemandPrediction } from "@/services/api";
-import { BarChartComponent, LineChartComponent } from "@/components/Chart";
+import { api, Purchase } from "@/services/api";
+import { BarChartComponent } from "@/components/Chart";
 import Table from "@/components/Table";
-import { ShoppingCart, AlertTriangle, TrendingUp, DollarSign, ChevronDown, ChevronUp, Zap, ArrowRight } from "lucide-react";
-import { CATEGORY_COLORS, RISK_COLORS } from "@/lib/constants";
-import { useAuth } from "@/contexts/AuthContext";
-import Link from "next/link";
+import { ShoppingCart, TrendingUp, Tag } from "lucide-react";
+import { CATEGORY_COLORS } from "@/lib/constants";
 
 function StatCard({ icon: Icon, label, value, sub, color }: {
   icon: React.ElementType; label: string; value: string | number; sub?: string; color: string;
@@ -25,47 +23,15 @@ function StatCard({ icon: Icon, label, value, sub, color }: {
   );
 }
 
-function BudgetBar({ spent, budget }: { spent: number; budget: number }) {
-  const pct = budget > 0 ? Math.min((spent / budget) * 100, 100) : 0;
-  const over = budget > 0 && spent > budget;
-  const color = pct > 90 ? "bg-red-500" : pct > 70 ? "bg-yellow-400" : "bg-green-500";
-  return (
-    <div className="card">
-      <div className="flex items-center justify-between mb-2">
-        <h3 className="text-sm font-semibold text-gray-700">Monthly Budget</h3>
-        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${over ? "bg-red-100 text-red-700" : "bg-green-100 text-green-700"}`}>
-          {over ? `₹${(spent - budget).toFixed(0)} over` : `₹${(budget - spent).toFixed(0)} left`}
-        </span>
-      </div>
-      <div className="flex items-end gap-2 mb-2">
-        <span className="text-2xl font-bold text-gray-900">₹{spent.toFixed(0)}</span>
-        <span className="text-sm text-gray-400 mb-0.5">of ₹{budget.toFixed(0)}</span>
-      </div>
-      <div className="w-full h-3 bg-gray-100 rounded-full overflow-hidden">
-        <div
-          className={`h-full rounded-full transition-all duration-700 ${color}`}
-          style={{ width: `${pct}%` }}
-        />
-      </div>
-      <p className="text-xs text-gray-400 mt-1">{pct.toFixed(0)}% used this month</p>
-    </div>
-  );
-}
-
 export default function Dashboard() {
-  const { user } = useAuth();
   const [purchases, setPurchases] = useState<Purchase[]>([]);
-  const [waste, setWaste] = useState<WasteAlert[]>([]);
-  const [demand, setDemand] = useState<DemandPrediction[]>([]);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [p, w, d] = await Promise.all([api.getPurchases(200), api.predictWaste(), api.predictDemand()]);
+      const p = await api.getPurchases(50);
       setPurchases(p);
-      setWaste(w.waste_alerts);
-      setDemand(d.predictions);
     } catch (e) {
       console.error(e);
     } finally {
@@ -75,7 +41,6 @@ export default function Dashboard() {
 
   useEffect(() => { load(); }, [load]);
 
-  // Category spend
   const catSpend: Record<string, number> = {};
   purchases.forEach((p) => {
     catSpend[p.category] = (catSpend[p.category] || 0) + p.price;
@@ -85,36 +50,14 @@ export default function Dashboard() {
     spend: parseFloat(spend.toFixed(2)),
   }));
 
-  // Monthly spend trend
-  const monthlyMap: Record<string, number> = {};
-  purchases.forEach((p) => {
-    const month = p.purchase_date.slice(0, 7); // YYYY-MM
-    monthlyMap[month] = (monthlyMap[month] || 0) + p.price;
-  });
-  const monthlyTrend = Object.entries(monthlyMap)
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([month, spend]) => ({
-      month: new Date(month + "-01").toLocaleDateString("en-IN", { month: "short", year: "2-digit" }),
-      spend: parseFloat(spend.toFixed(2)),
-    }));
-
-  // Current month spend vs budget
-  const thisMonth = new Date().toISOString().slice(0, 7);
-  const currentMonthSpend = purchases
-    .filter((p) => p.purchase_date.startsWith(thisMonth))
-    .reduce((a, p) => a + p.price, 0);
-  const budget = user?.monthly_budget ?? 3000;
-
   const totalSpend = purchases.reduce((a, p) => a + p.price, 0);
-  const highRisk = waste.filter((w) => w.risk_level === "High").length;
-  const avgConf = waste.length
-    ? waste.reduce((a, w) => a + (1 - w.waste_probability_tabnet), 0) / waste.length
-    : 0;
+  const categories = Object.keys(catSpend).length;
 
   const purchaseCols = [
     { key: "purchase_date", header: "Date" },
     { key: "item", header: "Item" },
-    { key: "category", header: "Category",
+    {
+      key: "category", header: "Category",
       render: (r: Purchase) => (
         <span className="px-2 py-0.5 rounded text-xs font-medium text-white" style={{ background: CATEGORY_COLORS[r.category] || "#6b7280" }}>
           {r.category}
@@ -125,22 +68,6 @@ export default function Dashboard() {
     { key: "price", header: "Price (₹)", render: (r: Purchase) => `₹${r.price.toFixed(2)}` },
   ];
 
-  const wasteCols = [
-    { key: "item", header: "Item" },
-    { key: "category", header: "Category" },
-    { key: "risk_level", header: "Risk",
-      render: (r: WasteAlert) => (
-        <span className={RISK_COLORS[r.risk_level]}>{r.risk_level}</span>
-      ),
-    },
-    { key: "waste_probability_tabnet", header: "Probability",
-      render: (r: WasteAlert) => `${(r.waste_probability_tabnet * 100).toFixed(1)}%`,
-    },
-    { key: "days_until_expiry", header: "Days Left" },
-  ];
-
-  const [chartsOpen, setChartsOpen] = useState(false);
-
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -149,259 +76,37 @@ export default function Dashboard() {
     );
   }
 
-  /* ── Empty state: no purchases yet ── */
-  if (purchases.length === 0) {
-    return (
-      <div className="space-y-6 max-w-3xl mx-auto">
-        {/* Welcome hero */}
-        <div className="rounded-2xl bg-gradient-to-br from-green-700 to-green-500 text-white p-8">
-          <h1 className="text-2xl font-bold mb-1">
-            Welcome{user ? `, ${user.name.split(" ")[0]}` : ""}! 👋
-          </h1>
-          <p className="text-green-100 text-sm mb-8">
-            SmartGrocery needs a few purchases to start predicting your needs. Let&apos;s set you up.
-          </p>
-
-          {/* Step progress */}
-          <div className="flex items-start gap-0 mb-8">
-            {[
-              { n: 1, label: "Add first purchase", active: true },
-              { n: 2, label: "Get first prediction", active: false },
-              { n: 3, label: "Track your savings", active: false },
-            ].map((step, i, arr) => (
-              <div key={step.n} className="flex items-start flex-1">
-                <div className="flex flex-col items-center flex-1">
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 ${
-                    step.active ? "bg-white text-green-700 shadow-md" : "bg-green-600 text-green-200 border-2 border-green-400"
-                  }`}>
-                    {step.n}
-                  </div>
-                  <p className={`text-xs mt-2 text-center leading-tight ${step.active ? "text-white font-semibold" : "text-green-300"}`}>
-                    {step.label}
-                  </p>
-                </div>
-                {i < arr.length - 1 && (
-                  <div className="h-0.5 bg-green-500 flex-1 mt-4 mx-1" />
-                )}
-              </div>
-            ))}
-          </div>
-
-          <Link
-            href="/add"
-            className="inline-flex items-center gap-2 bg-white text-green-700 font-bold px-6 py-3 rounded-xl text-sm hover:bg-green-50 transition-colors"
-          >
-            <ShoppingCart className="w-4 h-4" /> Add Your First Purchase <ArrowRight className="w-4 h-4" />
-          </Link>
-        </div>
-
-        {/* Locked stat cards */}
-        <div className="grid grid-cols-3 gap-4">
-          {[
-            { label: "Monthly Budget", value: `₹0 / ₹${(user?.monthly_budget ?? 8000).toLocaleString()}`, sub: "Start logging to track" },
-            { label: "Waste Risk Alerts", value: "—", sub: "Add items to monitor" },
-            { label: "Freshness Score", value: "—", sub: "Unlocks with data" },
-          ].map((c) => (
-            <div key={c.label} className="card opacity-50 relative overflow-hidden">
-              <span className="absolute top-2 right-2 text-xs bg-gray-100 text-gray-400 px-2 py-0.5 rounded-full">
-                Unlocks with data
-              </span>
-              <p className="text-xs text-gray-400 font-medium uppercase tracking-wide mb-1">{c.label}</p>
-              <p className="text-xl font-bold text-gray-700">{c.value}</p>
-              <p className="text-xs text-gray-400 mt-0.5">{c.sub}</p>
-            </div>
-          ))}
-        </div>
-
-        {/* What happens next */}
-        <div className="card border-dashed border-gray-300 bg-gray-50">
-          <h3 className="text-sm font-semibold text-gray-700 mb-4">What unlocks as you log more?</h3>
-          <div className="grid grid-cols-3 gap-4 text-center">
-            {[
-              { emoji: "🛒", milestone: "5+ items", desc: "Waste risk predictions appear" },
-              { emoji: "📊", milestone: "10+ items", desc: "Shopping list gets personalised" },
-              { emoji: "💰", milestone: "1 month",  desc: "Overspend detection saves ₹500+/mo" },
-            ].map((m) => (
-              <div key={m.milestone}>
-                <div className="text-3xl mb-2">{m.emoji}</div>
-                <div className="text-xs font-bold text-gray-700 mb-1">{m.milestone}</div>
-                <div className="text-xs text-gray-500 leading-snug">{m.desc}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  /* ── With-data state ── */
-  const hour = new Date().getHours();
-  const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
-  const today = new Date().toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long" });
-
-  // Merge waste High/Medium alerts + demand items due in ≤2 days into a single prioritised action list
-  type TopAction = { key: string; title: string; subtitle: string; badge: string; badgeColor: string };
-  const topActions: TopAction[] = [
-    ...waste
-      .filter((w) => w.risk_level === "High" || w.risk_level === "Medium")
-      .map((w) => ({
-        key: `waste-${w.item}`,
-        title: `${w.item} — use before it spoils`,
-        subtitle: `${w.recommendation} · ${w.days_until_expiry} day${w.days_until_expiry !== 1 ? "s" : ""} left`,
-        badge: w.risk_level,
-        badgeColor: w.risk_level === "High" ? "bg-red-100 text-red-700" : "bg-orange-100 text-orange-700",
-      })),
-    ...demand
-      .filter((d) => d.days_until_next <= 2)
-      .map((d) => ({
-        key: `demand-${d.item}`,
-        title: `${d.item} — time to restock`,
-        subtitle: `${d.urgency_message} · Buy ${d.recommended_quantity.toFixed(1)} kg · ₹${d.estimated_cost_inr.toFixed(0)}`,
-        badge: "Buy today",
-        badgeColor: "bg-blue-100 text-blue-700",
-      })),
-  ].slice(0, 3);
-
   return (
     <div className="space-y-6">
-      {/* Greeting */}
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">
-            {greeting}{user ? `, ${user.name.split(" ")[0]}` : ""} ☀️
-          </h1>
-          <p className="text-sm text-gray-500 mt-0.5">{today}</p>
-        </div>
+        <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
         <button onClick={load} className="btn-secondary text-sm">Refresh</button>
       </div>
 
-      {/* ⚡ Top actions today — waste alerts + urgent restocks */}
-      {topActions.length > 0 && (
-        <div className="card border-yellow-200 bg-yellow-50">
-          <h2 className="text-sm font-semibold text-yellow-800 flex items-center gap-1.5 mb-3">
-            <Zap className="w-4 h-4" /> Today&apos;s top {topActions.length} action{topActions.length > 1 ? "s" : ""}
-          </h2>
-          <div className="space-y-2">
-            {topActions.map((action, i) => (
-              <div key={action.key} className="flex items-start gap-3 bg-white rounded-xl p-3 border border-yellow-100">
-                <span className="w-6 h-6 rounded-full bg-yellow-100 text-yellow-700 text-xs font-bold flex items-center justify-center flex-shrink-0 mt-0.5">
-                  {i + 1}
-                </span>
-                <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-gray-800 text-sm">{action.title}</p>
-                  <p className="text-xs text-gray-500 mt-0.5">{action.subtitle}</p>
-                </div>
-                <span className={`text-xs px-2 py-0.5 rounded-full font-semibold flex-shrink-0 ${action.badgeColor}`}>
-                  {action.badge}
-                </span>
-              </div>
-            ))}
-          </div>
-          <Link href="/insights" className="flex items-center gap-1 mt-3 text-xs text-green-700 font-semibold hover:underline">
-            See all insights <ArrowRight className="w-3 h-3" />
-          </Link>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <StatCard icon={ShoppingCart} label="Total Purchases" value={purchases.length} sub="all time" color="bg-green-50 text-green-600" />
+        <StatCard icon={TrendingUp} label="Total Spent" value={`₹${totalSpend.toFixed(0)}`} sub="all time" color="bg-blue-50 text-blue-600" />
+        <StatCard icon={Tag} label="Categories" value={categories} sub="unique categories" color="bg-purple-50 text-purple-600" />
+      </div>
+
+      {spendData.length > 0 && (
+        <div className="card">
+          <BarChartComponent
+            data={spendData}
+            xKey="category"
+            bars={[{ key: "spend", color: "#22c55e", name: "Spend (₹)" }]}
+            title="Spending by Category"
+          />
         </div>
       )}
 
-      {/* Stats row */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <BudgetBar spent={currentMonthSpend} budget={budget} />
-        <div className="card flex items-start gap-4">
-          <div className="w-11 h-11 rounded-xl flex items-center justify-center bg-red-50 text-red-600 flex-shrink-0">
-            <AlertTriangle className="w-5 h-5" />
-          </div>
-          <div>
-            <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">Waste Risk</p>
-            <p className="text-2xl font-bold text-gray-800">{highRisk}</p>
-            <p className="text-xs text-gray-400 mt-0.5">{highRisk === 0 ? "All items fresh" : `item${highRisk > 1 ? "s" : ""} need attention`}</p>
-          </div>
-        </div>
-        <div className="card flex items-start gap-4">
-          <div className="w-11 h-11 rounded-xl flex items-center justify-center bg-purple-50 text-purple-600 flex-shrink-0">
-            <TrendingUp className="w-5 h-5" />
-          </div>
-          <div>
-            <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">Freshness</p>
-            <p className="text-2xl font-bold text-gray-800">{(avgConf * 100).toFixed(0)}%</p>
-            <p className="text-xs text-gray-400 mt-0.5">avg across all items</p>
-          </div>
-        </div>
-      </div>
-
-      {/* Two-column: Recent purchases + Upcoming needs */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="card">
-          <h2 className="text-sm font-semibold text-gray-700 mb-3">Recent Purchases</h2>
-          <Table columns={purchaseCols as never} data={purchases.slice(0, 6) as never} emptyMessage="No purchases recorded yet." />
-          {purchases.length > 6 && (
-            <Link href="/add" className="flex items-center gap-1 mt-3 text-xs text-green-700 font-semibold hover:underline">
-              View all {purchases.length} purchases <ArrowRight className="w-3 h-3" />
-            </Link>
-          )}
-        </div>
-        <div className="card">
-          <h2 className="text-sm font-semibold text-gray-700 mb-3">Items at Waste Risk</h2>
-          <Table columns={wasteCols as never} data={waste.filter((w) => w.risk_level !== "Low").slice(0, 6) as never} emptyMessage="No waste alerts — all items look fresh!" />
-          {waste.filter((w) => w.risk_level !== "Low").length > 0 && (
-            <Link href="/recommendations" className="flex items-center gap-1 mt-3 text-xs text-green-700 font-semibold hover:underline">
-              View full shopping list <ArrowRight className="w-3 h-3" />
-            </Link>
-          )}
-        </div>
-      </div>
-
-      {/* Charts — collapsed by default */}
       <div className="card">
-        <button
-          onClick={() => setChartsOpen((o) => !o)}
-          className="flex items-center justify-between w-full text-left"
-        >
-          <span className="text-sm font-semibold text-gray-700">Spending Trends</span>
-          <span className="flex items-center gap-1 text-xs text-green-700 font-medium">
-            {chartsOpen ? "Hide charts" : "Show charts"}
-            {chartsOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-          </span>
-        </button>
-
-        {chartsOpen && (
-          <div className="mt-4 space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <BarChartComponent
-                data={spendData}
-                xKey="category"
-                bars={[{ key: "spend", color: "#22c55e", name: "Spend (₹)" }]}
-                title="Spending by Category"
-              />
-              {(() => {
-                const counts: Record<string, number> = { High: 0, Medium: 0, Low: 0 };
-                waste.forEach((w) => { counts[w.risk_level]++; });
-                const riskData = [
-                  { level: "High",   count: counts.High,   fill: "#ef4444" },
-                  { level: "Medium", count: counts.Medium, fill: "#f59e0b" },
-                  { level: "Low",    count: counts.Low,    fill: "#22c55e" },
-                ];
-                return (
-                  <BarChartComponent
-                    data={riskData}
-                    xKey="level"
-                    bars={[{ key: "count", color: "#22c55e", name: "Items" }]}
-                    title="Waste Risk Distribution"
-                    height={250}
-                  />
-                );
-              })()}
-            </div>
-            {monthlyTrend.length >= 2 && (
-              <LineChartComponent
-                data={monthlyTrend}
-                xKey="month"
-                lines={[{ key: "spend", color: "#22c55e", name: "Monthly Spend (₹)" }]}
-                title="Month-over-Month Spend Trend"
-                height={280}
-              />
-            )}
-          </div>
-        )}
+        <h2 className="text-sm font-semibold text-gray-700 mb-3">Recent Purchases</h2>
+        <Table
+          columns={purchaseCols as never}
+          data={purchases as never}
+          emptyMessage="No purchases yet — add your first one!"
+        />
       </div>
     </div>
   );

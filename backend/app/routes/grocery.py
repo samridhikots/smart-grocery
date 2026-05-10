@@ -80,22 +80,6 @@ def get_purchases(
     ]
 
 
-@router.delete("/purchases/{purchase_id}", status_code=204)
-def delete_purchase(
-    purchase_id: int,
-    user_id: int = Depends(get_current_user_id),
-    db: Session = Depends(get_db),
-):
-    record = (
-        db.query(PurchaseRecord)
-        .filter(PurchaseRecord.id == purchase_id, PurchaseRecord.user_id == user_id)
-        .first()
-    )
-    if not record:
-        raise HTTPException(status_code=404, detail="Purchase not found")
-    db.delete(record)
-    db.commit()
-
 
 @router.get("/items")
 def list_items():

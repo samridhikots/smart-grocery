@@ -30,12 +30,6 @@ class LoginRequest(BaseModel):
     password: str
 
 
-class OnboardingRequest(BaseModel):
-    household_size: int = 3
-    monthly_budget: float = 3000.0
-    dietary_prefs: str = ""  # comma-separated e.g. "vegetarian,no-onion"
-
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -45,10 +39,6 @@ def _user_response(user: UserRecord) -> dict:
         "id": user.id,
         "name": user.name,
         "email": user.email,
-        "household_size": user.household_size,
-        "monthly_budget": user.monthly_budget,
-        "dietary_prefs": user.dietary_prefs or "",
-        "onboarding_complete": bool(user.onboarding_complete),
     }
 
 
@@ -77,10 +67,6 @@ def signup(req: SignupRequest, db: Session = Depends(get_db)):
         name=req.name.strip(),
         email=req.email.lower().strip(),
         password_hash=hash_password(req.password),
-        household_size=3,
-        monthly_budget=3000.0,
-        dietary_prefs="",
-        onboarding_complete=0,
         created_at=datetime.now(timezone.utc).isoformat(),
     )
     db.add(user)
@@ -105,20 +91,3 @@ def get_me(user_id: int = Depends(get_current_user_id), db: Session = Depends(ge
     return _user_response(user)
 
 
-@router.put("/auth/onboarding")
-def complete_onboarding(
-    req: OnboardingRequest,
-    user_id: int = Depends(get_current_user_id),
-    db: Session = Depends(get_db),
-):
-    user = db.query(UserRecord).filter(UserRecord.id == user_id).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-
-    user.household_size = max(1, min(req.household_size, 15))
-    user.monthly_budget = max(500.0, req.monthly_budget)
-    user.dietary_prefs = req.dietary_prefs
-    user.onboarding_complete = 1
-    db.commit()
-    db.refresh(user)
-    return _user_response(user)
