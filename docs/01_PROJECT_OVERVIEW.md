@@ -487,8 +487,18 @@ open http://localhost:8000/docs
 
 ### Decision 7: SQLite for Persistence
 **Choice:** SQLite over PostgreSQL/MySQL.  
-**Reason:** Zero infrastructure setup for a demo project. The schema is simple (one `purchases` table). SQLite handles concurrent reads adequately for a single-user demo and can be replaced with PostgreSQL with minimal code changes.
+**Reason:** Zero infrastructure setup for a demo project. The schema is simple (`users` + `purchases` tables). SQLite handles concurrent reads adequately for a single-user demo and can be replaced with PostgreSQL with minimal code changes.
 
-### Decision 8: Next.js 14 App Router
+### Decision 8: JWT Authentication
+**Choice:** python-jose JWT tokens (HS256, 30-day expiry) + passlib bcrypt password hashing.  
+**Reason:** Proper multi-user isolation requires authentication. JWT stored in localStorage is sent as `Authorization: Bearer <token>` on every API request. The backend extracts `user_id` from the token instead of accepting it as a query param, preventing users from accessing each other's data.
+
+**Flow:**
+1. POST `/api/auth/signup` → creates `UserRecord`, returns `{access_token, user}`
+2. POST `/api/auth/login` → verifies bcrypt hash, returns `{access_token, user}`
+3. All user-specific routes (`/api/purchases`, `/api/insights`, `/api/overspending`, `/api/sustainability`) require `Authorization: Bearer <token>` — missing or invalid tokens return HTTP 401.
+4. PUT `/api/auth/onboarding` → saves household size, monthly budget, dietary prefs; sets `onboarding_complete=True`.
+
+### Decision 9: Next.js 14 App Router
 **Choice:** Next.js 14 App Router with Server and Client components.  
-**Reason:** App Router is the recommended pattern from Next.js 14 onwards, supports streaming, and separates layout from page logic cleanly. The 7-page structure (including new /insights and /sustainability) maps naturally to the App Router's file-based routing.
+**Reason:** App Router is the recommended pattern from Next.js 14 onwards, supports streaming, and separates layout from page logic cleanly. The 9-page structure (including /auth/signin, /auth/signup, /insights, /sustainability) maps naturally to the App Router's file-based routing.

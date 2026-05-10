@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.database.db import create_tables
 from app.services.evaluator import train_all_models
 from app.routes import grocery, prediction, optimization, comparison
-from app.routes import insights, sustainability
+from app.routes import insights, sustainability, auth as auth_routes
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -71,6 +71,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(auth_routes.router,    prefix="/api", tags=["Auth"])
 app.include_router(grocery.router,        prefix="/api", tags=["Grocery"])
 app.include_router(prediction.router,     prefix="/api", tags=["Prediction"])
 app.include_router(optimization.router,   prefix="/api", tags=["Optimization"])

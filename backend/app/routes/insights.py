@@ -8,10 +8,11 @@ human-readable insights for Indian household users.
 from datetime import datetime
 from typing import List, Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from app.utils.store import model_store
+from app.utils.auth import get_current_user_id
 from app.datasets.loader import load_grocery_purchases
 
 router = APIRouter()
@@ -22,7 +23,7 @@ router = APIRouter()
 # ---------------------------------------------------------------------------
 
 @router.get("/insights")
-def get_insights(user_id: int = Query(default=1, description="User ID")):
+def get_insights(user_id: int = Depends(get_current_user_id)):
     """
     Returns a prioritised list of actionable insights for the user:
       - Shortage alerts (demand model)
@@ -232,9 +233,9 @@ def get_recommendations(req: BasketRequest):
 
 @router.get("/overspending")
 def get_overspending(
-    user_id: int = Query(default=1),
     month: Optional[int] = Query(default=None),
     year:  Optional[int] = Query(default=None),
+    user_id: int = Depends(get_current_user_id),
 ):
     if not model_store["initialized"]:
         raise HTTPException(status_code=503, detail="Models not yet initialized")

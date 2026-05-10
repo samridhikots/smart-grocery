@@ -1,11 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
-from typing import Optional
 from datetime import date
 
 from app.database.db import get_db, PurchaseRecord
 from app.utils.helpers import ITEMS
+from app.utils.auth import get_current_user_id
 
 router = APIRouter()
 
@@ -16,7 +16,6 @@ class PurchaseCreate(BaseModel):
     quantity: float = Field(gt=0)
     price: float = Field(gt=0)
     purchase_date: str
-    user_id: int = 1
 
 
 class PurchaseResponse(BaseModel):
@@ -30,14 +29,18 @@ class PurchaseResponse(BaseModel):
 
 
 @router.post("/add-purchase", response_model=PurchaseResponse, status_code=201)
-def add_purchase(purchase: PurchaseCreate, db: Session = Depends(get_db)):
+def add_purchase(
+    purchase: PurchaseCreate,
+    user_id: int = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
     if purchase.item not in ITEMS and purchase.category not in [
         "Vegetables", "Fruits", "Dairy", "Grains", "Protein", "Beverages"
     ]:
         raise HTTPException(status_code=400, detail=f"Unknown item: {purchase.item}")
 
     record = PurchaseRecord(
-        user_id=purchase.user_id,
+        user_id=user_id,
         item=purchase.item,
         category=purchase.category,
         quantity=purchase.quantity,
@@ -51,11 +54,18 @@ def add_purchase(purchase: PurchaseCreate, db: Session = Depends(get_db)):
 
 
 @router.get("/purchases")
-def get_purchases(limit: int = 50, user_id: Optional[int] = None, db: Session = Depends(get_db)):
-    query = db.query(PurchaseRecord)
-    if user_id:
-        query = query.filter(PurchaseRecord.user_id == user_id)
-    purchases = query.order_by(PurchaseRecord.id.desc()).limit(limit).all()
+def get_purchases(
+    limit: int = 50,
+    user_id: int = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
+    purchases = (
+        db.query(PurchaseRecord)
+        .filter(PurchaseRecord.user_id == user_id)
+        .order_by(PurchaseRecord.id.desc())
+        .limit(limit)
+        .all()
+    )
     return [
         {
             "id": p.id,
@@ -68,6 +78,23 @@ def get_purchases(limit: int = 50, user_id: Optional[int] = None, db: Session = 
         }
         for p in purchases
     ]
+
+
+@router.delete("/purchases/{purchase_id}", status_code=204)
+def delete_purchase(
+    purchase_id: int,
+    user_id: int = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
+    record = (
+        db.query(PurchaseRecord)
+        .filter(PurchaseRecord.id == purchase_id, PurchaseRecord.user_id == user_id)
+        .first()
+    )
+    if not record:
+        raise HTTPException(status_code=404, detail="Purchase not found")
+    db.delete(record)
+    db.commit()
 
 
 @router.get("/items")

@@ -2,20 +2,30 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import Navbar from "@/components/Navbar";
+import { AuthProvider } from "@/contexts/AuthContext";
+import AuthGuard from "@/components/AuthGuard";
+import OnboardingModal from "@/components/OnboardingModal";
 
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Smart Grocery — India",
-  description: "AI-powered grocery management for Indian households — demand prediction, waste reduction, overspending alerts, and sustainability tracking.",
+  title: "SmartGrocery — India",
+  description: "AI-powered grocery management for Indian households — save money, reduce waste, shop smarter.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
       <body className={inter.className}>
-        <Navbar />
-        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">{children}</main>
+        <AuthProvider>
+          <Navbar />
+          <AuthGuard>
+            <OnboardingModal />
+            <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+              {children}
+            </main>
+          </AuthGuard>
+        </AuthProvider>
       </body>
     </html>
   );

@@ -1,11 +1,12 @@
 "use client";
 import { useEffect, useState, useCallback } from "react";
 import { api, SustainabilityResult, SustainabilityItem } from "@/services/api";
+import { useAuth } from "@/contexts/AuthContext";
 import { Leaf, RefreshCw, Recycle, Wind, Package } from "lucide-react";
 import { BarChartComponent } from "@/components/Chart";
 
 function EcoMeter({ value, max = 10, label }: { value: number; max?: number; label: string }) {
-  const pct = (value / max) * 100;
+  const pct   = (value / max) * 100;
   const color = pct >= 70 ? "bg-green-500" : pct >= 40 ? "bg-yellow-500" : "bg-red-500";
   return (
     <div>
@@ -21,19 +22,19 @@ function EcoMeter({ value, max = 10, label }: { value: number; max?: number; lab
 }
 
 export default function SustainabilityPage() {
-  const [report, setReport] = useState<SustainabilityResult | null>(null);
-  const [items, setItems] = useState<SustainabilityItem[]>([]);
-  const [months, setMonths] = useState(1);
+  const { user } = useAuth();
+  const [report, setReport]   = useState<SustainabilityResult | null>(null);
+  const [items, setItems]     = useState<SustainabilityItem[]>([]);
+  const [months, setMonths]   = useState(1);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const [userId] = useState(1);
+  const [error, setError]     = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
     setError("");
     try {
       const [r, it] = await Promise.all([
-        api.getSustainability(userId, months),
+        api.getSustainability(months),
         api.getSustainabilityItems(),
       ]);
       setReport(r);
@@ -43,7 +44,7 @@ export default function SustainabilityPage() {
     } finally {
       setLoading(false);
     }
-  }, [userId, months]);
+  }, [months]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -73,7 +74,8 @@ export default function SustainabilityPage() {
             <Leaf className="w-6 h-6 text-emerald-600" /> Sustainability Tracker
           </h1>
           <p className="text-gray-500 text-sm mt-1">
-            Track your environmental footprint and get eco-friendly swap suggestions.
+            Environmental footprint for{" "}
+            <span className="font-medium text-gray-700">{user?.name ?? "your household"}</span>
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -99,7 +101,6 @@ export default function SustainabilityPage() {
 
       {report && (
         <>
-          {/* Summary cards */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             <div className="card text-center">
               <Wind className="w-6 h-6 text-blue-500 mx-auto mb-2" />
@@ -123,7 +124,6 @@ export default function SustainabilityPage() {
             </div>
           </div>
 
-          {/* Eco metrics bar */}
           <div className="card space-y-4">
             <h2 className="text-lg font-semibold text-gray-800">Environmental Metrics</h2>
             <EcoMeter value={report.avg_eco_score} label="Average Eco Score" />
@@ -131,12 +131,9 @@ export default function SustainabilityPage() {
             <EcoMeter value={10 - (report.non_biodegradable_pct / 10)} label="Biodegradability Score" />
           </div>
 
-          {/* Swap suggestions */}
-          {report.swap_suggestions && report.swap_suggestions.length > 0 && (
+          {report.swap_suggestions?.length > 0 && (
             <div className="card">
-              <h2 className="text-lg font-semibold text-gray-800 mb-4">
-                Eco-Friendly Swap Suggestions
-              </h2>
+              <h2 className="text-lg font-semibold text-gray-800 mb-4">Eco-Friendly Swap Suggestions</h2>
               <div className="space-y-3">
                 {report.swap_suggestions.map((swap, i) => (
                   <div key={i} className="flex items-center justify-between p-3 bg-green-50 rounded-xl border border-green-100">
@@ -163,7 +160,6 @@ export default function SustainabilityPage() {
         </>
       )}
 
-      {/* CO2 chart */}
       {topPolluters.length > 0 && (
         <div className="card">
           <BarChartComponent
@@ -176,7 +172,6 @@ export default function SustainabilityPage() {
         </div>
       )}
 
-      {/* Eco score chart */}
       {ecoScoreData.length > 0 && (
         <div className="card">
           <BarChartComponent
@@ -189,7 +184,6 @@ export default function SustainabilityPage() {
         </div>
       )}
 
-      {/* Full items table */}
       {items.length > 0 && (
         <div className="card">
           <h2 className="text-lg font-semibold text-gray-800 mb-4">All Items — Environmental Profile</h2>

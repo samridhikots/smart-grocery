@@ -7,9 +7,10 @@ Endpoints:
   GET /api/sustainability/swaps   — CO₂ swap suggestions
 """
 from typing import Optional
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.utils.store import model_store
+from app.utils.auth import get_current_user_id
 from app.utils.helpers import ITEMS
 
 router = APIRouter()
@@ -17,8 +18,8 @@ router = APIRouter()
 
 @router.get("/sustainability")
 def get_sustainability(
-    user_id: int = Query(default=1),
     months:  int = Query(default=1, ge=1, le=12),
+    user_id: int = Depends(get_current_user_id),
 ):
     """
     Returns sustainability/environmental metrics for the user's purchase history.
@@ -83,7 +84,7 @@ def get_item_eco_scores():
 
 
 @router.get("/sustainability/swaps")
-def get_swap_suggestions(user_id: int = Query(default=1)):
+def get_swap_suggestions(user_id: int = Depends(get_current_user_id)):
     """Return personalised CO₂-reduction swap suggestions."""
     if not model_store["initialized"]:
         raise HTTPException(status_code=503, detail="Models not yet initialized")

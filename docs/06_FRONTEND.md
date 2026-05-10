@@ -24,20 +24,29 @@
 ```
 frontend/
 ├── app/                    ← Next.js App Router (pages + layouts)
-│   ├── layout.tsx          ← Root layout wrapping all pages
+│   ├── layout.tsx          ← Root layout: AuthProvider → Navbar → AuthGuard → OnboardingModal
 │   ├── globals.css         ← Tailwind base + custom components
-│   ├── page.tsx            ← Landing page (/)
-│   ├── dashboard/          ← /dashboard
-│   ├── add/                ← /add
-│   ├── recommendations/    ← /recommendations
-│   └── comparison/         ← /comparison
+│   ├── page.tsx            ← Public landing page (/)
+│   ├── auth/
+│   │   ├── signin/         ← /auth/signin  (public)
+│   │   └── signup/         ← /auth/signup  (public)
+│   ├── dashboard/          ← /dashboard    (protected)
+│   ├── add/                ← /add          (protected)
+│   ├── recommendations/    ← /recommendations (protected)
+│   ├── insights/           ← /insights     (protected)
+│   ├── sustainability/     ← /sustainability (protected)
+│   └── comparison/         ← /comparison   (protected)
 ├── components/             ← Shared React components
-│   ├── Navbar.tsx
+│   ├── Navbar.tsx          ← Shows user name + logout when authenticated
+│   ├── AuthGuard.tsx       ← Redirects unauthenticated users to /auth/signin
+│   ├── OnboardingModal.tsx ← 3-step household setup shown after signup
 │   ├── Chart.tsx           ← Recharts wrapper components
 │   ├── Table.tsx           ← Generic typed table
 │   └── Form.tsx            ← Purchase input form
+├── contexts/
+│   └── AuthContext.tsx     ← Auth state (user, token, login, signup, logout, onboarding)
 ├── services/
-│   └── api.ts              ← Typed HTTP client (all API calls)
+│   └── api.ts              ← Typed HTTP client; auto-injects Bearer token from localStorage
 └── lib/
     └── constants.ts        ← Item lists, category colors, constants
 ```
@@ -53,17 +62,21 @@ frontend/
 
 ## 2. Routing Structure
 
-| URL | File | Type | Description |
+| URL | File | Auth | Description |
 |-----|------|------|-------------|
-| `/` | `app/page.tsx` | Static | Landing page |
-| `/dashboard` | `app/dashboard/page.tsx` | Client | Live dashboard with charts |
-| `/add` | `app/add/page.tsx` | Client | Purchase recording form |
-| `/recommendations` | `app/recommendations/page.tsx` | Client | Demand, waste, budget tabs |
-| `/comparison` | `app/comparison/page.tsx` | Client | Model comparison charts |
+| `/` | `app/page.tsx` | Public | Consumer-friendly landing page |
+| `/auth/signin` | `app/auth/signin/page.tsx` | Public | Sign-in form |
+| `/auth/signup` | `app/auth/signup/page.tsx` | Public | Sign-up form |
+| `/dashboard` | `app/dashboard/page.tsx` | Protected | Live dashboard with charts |
+| `/add` | `app/add/page.tsx` | Protected | Purchase recording form |
+| `/recommendations` | `app/recommendations/page.tsx` | Protected | Demand, waste, budget tabs |
+| `/insights` | `app/insights/page.tsx` | Protected | Top 3 Actions + all ML insights |
+| `/sustainability` | `app/sustainability/page.tsx` | Protected | CO₂ tracker, swap suggestions |
+| `/comparison` | `app/comparison/page.tsx` | Protected | Model comparison charts |
 
-All data-fetching pages are **client components** (`"use client"`) because they call the backend API from the browser and update state reactively.
+**Auth guard:** `AuthGuard` (client component) checks `useAuth().user` on every render. If the route is protected and the user is not logged in, it calls `router.replace("/auth/signin")`.
 
-The landing page (`/`) is a **static server component** — it contains no dynamic data and renders at build time.
+**Token injection:** `api.ts` reads `localStorage.getItem("sg_token")` on every `request()` call and injects `Authorization: Bearer <token>` automatically.
 
 ### Root Layout
 

@@ -3,7 +3,7 @@ import { useEffect, useState, useCallback } from "react";
 import { api, DemandPrediction, WasteAlert, OptimizationResult, OptimizedItem } from "@/services/api";
 import { LineChartComponent, BarChartComponent } from "@/components/Chart";
 import Table from "@/components/Table";
-import { TrendingUp, Trash2, DollarSign, Star } from "lucide-react";
+import { TrendingUp, Trash2, DollarSign, Star, Copy, Share2, Check } from "lucide-react";
 import { RISK_COLORS, CATEGORIES } from "@/lib/constants";
 
 type Tab = "demand" | "waste" | "budget";
@@ -18,6 +18,7 @@ export default function RecommendationsPage() {
   const [selectedCats, setSelectedCats] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [copied, setCopied] = useState(false);
 
   const loadDemand = useCallback(async () => {
     setLoading(true);
@@ -264,6 +265,41 @@ export default function RecommendationsPage() {
 
               {budget && (
                 <>
+                  {/* Share buttons */}
+                  {(() => {
+                    const listText = `🛒 My SmartGrocery List (Budget ₹${budget.budget.toFixed(0)})\n\n${
+                      budget.items.map((it: OptimizedItem) => `• ${it.item} × ${it.quantity.toFixed(1)} — ₹${it.total_cost.toFixed(0)}`).join("\n")
+                    }\n\nTotal: ₹${budget.total_cost.toFixed(0)}  |  Saved: ₹${budget.savings.toFixed(0)}\nPowered by SmartGrocery AI 🌿`;
+
+                    const handleCopy = async () => {
+                      await navigator.clipboard.writeText(listText);
+                      setCopied(true);
+                      setTimeout(() => setCopied(false), 2000);
+                    };
+
+                    const handleWhatsApp = () => {
+                      window.open(`https://wa.me/?text=${encodeURIComponent(listText)}`, "_blank");
+                    };
+
+                    return (
+                      <div className="flex gap-2 justify-end">
+                        <button
+                          onClick={handleCopy}
+                          className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium border border-gray-300 bg-white hover:bg-gray-50 text-gray-700 transition-colors"
+                        >
+                          {copied ? <Check className="w-4 h-4 text-green-600" /> : <Copy className="w-4 h-4" />}
+                          {copied ? "Copied!" : "Copy list"}
+                        </button>
+                        <button
+                          onClick={handleWhatsApp}
+                          className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium bg-[#25D366] hover:bg-[#1ebe5a] text-white transition-colors"
+                        >
+                          <Share2 className="w-4 h-4" /> Share on WhatsApp
+                        </button>
+                      </div>
+                    );
+                  })()}
+
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                     <div className="card text-center">
                       <p className="text-2xl font-bold text-gray-800">₹{budget.total_cost.toFixed(2)}</p>
