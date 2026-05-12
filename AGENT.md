@@ -7,7 +7,7 @@
 > 2. **Update the relevant doc(s) in `/docs/`** — every code change has a documentation counterpart.
 >
 > Never leave AGENT.md or the docs stale. They are the source of truth for future sessions.
-
+ 
 ---
 
 ## 1. Project Identity
