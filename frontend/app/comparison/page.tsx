@@ -176,13 +176,18 @@ export default function ComparisonPage() {
 
   return (
     <div className="space-y-8">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-          <BarChart2 className="w-6 h-6 text-green-600" /> Model Comparison
-        </h1>
-        <p className="text-gray-500 text-sm mt-1">
-          Side-by-side evaluation of legacy vs modern ML models on held-out test data.
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+            <BarChart2 className="w-6 h-6 text-green-600" /> Model Comparison
+          </h1>
+          <p className="text-gray-500 text-sm mt-1">
+            Side-by-side evaluation of legacy vs modern ML models on held-out test data.
+          </p>
+        </div>
+        <button onClick={load} disabled={loading} aria-label="Refresh model comparison" className="btn-secondary text-sm flex items-center gap-1.5 disabled:opacity-50 flex-shrink-0">
+          <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} /> Refresh
+        </button>
       </div>
 
       {/* Winner banner */}
@@ -236,8 +241,8 @@ export default function ComparisonPage() {
               xKey="model"
               bars={[
                 { key: "MAE", color: BRAND_COLORS.amber, name: "MAE" },
-                { key: "RMSE", color: "#ef4444", name: "RMSE" },
-                { key: "R2", color: "#22c55e", name: "R²" },
+                { key: "RMSE", color: BRAND_COLORS.red, name: "RMSE" },
+                { key: "R2", color: BRAND_COLORS.green, name: "R²" },
               ]}
               title="Demand Models — Error Comparison"
               height={280}
@@ -264,7 +269,7 @@ export default function ComparisonPage() {
               xKey="metric"
               bars={[
                 { key: wp.legacy.name, color: BRAND_COLORS.amber, name: "Logistic Reg" },
-                { key: wp.modern.name, color: "#22c55e", name: "TabNet" },
+                { key: wp.modern.name, color: BRAND_COLORS.green, name: "TabNet" },
               ]}
               title="Waste Models — Metric Comparison"
               height={320}

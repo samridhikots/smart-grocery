@@ -4,7 +4,7 @@ import { useSearchParams } from "next/navigation";
 import PurchaseForm from "@/components/Form";
 import Table from "@/components/Table";
 import { api, Purchase } from "@/services/api";
-import { PlusCircle, RefreshCw, CheckCircle, ChevronLeft, ChevronRight } from "lucide-react";
+import { PlusCircle, RefreshCw, CheckCircle, ChevronLeft, ChevronRight, AlertTriangle } from "lucide-react";
 import { CATEGORY_COLORS } from "@/lib/constants";
 
 const UNLOCK_MILESTONES = [
@@ -81,17 +81,19 @@ function AddPageInner() {
 
   const PAGE_SIZE = 10;
 
-  const [purchases, setPurchases] = useState<Purchase[]>([]);
-  const [loading,   setLoading]   = useState(false);
-  const [page,      setPage]      = useState(1);
+  const [purchases,   setPurchases]   = useState<Purchase[]>([]);
+  const [loading,     setLoading]     = useState(false);
+  const [fetchError,  setFetchError]  = useState("");
+  const [page,        setPage]        = useState(1);
 
   const fetchPurchases = useCallback(async () => {
     setLoading(true);
+    setFetchError("");
     try {
       const data = await api.getPurchases(200);
       setPurchases(data);
-    } catch (e) {
-      console.error(e);
+    } catch (e: unknown) {
+      setFetchError(e instanceof Error ? e.message : "Failed to load purchases");
     } finally {
       setLoading(false);
     }
@@ -149,6 +151,17 @@ function AddPageInner() {
 
       {/* Recent purchases */}
       <div className="card animate-slide-up stagger-2">
+        {fetchError && (
+          <div className="flex items-center justify-between gap-4 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl text-sm mb-4">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+              <span>{fetchError}</span>
+            </div>
+            <button onClick={fetchPurchases} className="flex items-center gap-1.5 font-semibold hover:underline flex-shrink-0">
+              <RefreshCw className="w-3.5 h-3.5" /> Retry
+            </button>
+          </div>
+        )}
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-xs font-bold uppercase tracking-widest text-gray-400">Recent Purchases</h2>
           <button

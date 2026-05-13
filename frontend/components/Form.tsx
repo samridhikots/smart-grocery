@@ -2,6 +2,7 @@
 import { useState, useRef, useEffect, useId } from "react";
 import { api } from "@/services/api";
 import { ITEMS_BY_CATEGORY, CATEGORY_COLORS } from "@/lib/constants";
+import { useToast } from "@/contexts/ToastContext";
 import { Search } from "lucide-react";
 
 interface FormState {
@@ -39,7 +40,8 @@ export default function PurchaseForm({
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
   const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [formError, setFormError] = useState("");
+  const { showToast } = useToast();
   const inputRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const listboxId = useId();
@@ -117,11 +119,11 @@ export default function PurchaseForm({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.item || !form.category || !form.quantity || !form.price) {
-      setMessage({ type: "error", text: "Please select an item and fill in all required fields." });
+      setFormError("Please select an item and fill in all required fields.");
       return;
     }
     setLoading(true);
-    setMessage(null);
+    setFormError("");
     try {
       await api.addPurchase({
         item: form.item,
@@ -130,13 +132,12 @@ export default function PurchaseForm({
         price: parseFloat(form.price),
         purchase_date: form.purchase_date,
       });
-      setMessage({ type: "success", text: `Added ${form.quantity} × ${form.item} to your purchases!` });
+      showToast(`Added ${form.item} to your purchases!`);
       setForm(INIT);
       setQuery("");
       onSuccess?.();
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Failed to add purchase";
-      setMessage({ type: "error", text: msg });
+      setFormError(err instanceof Error ? err.message : "Failed to add purchase");
     } finally {
       setLoading(false);
     }
@@ -144,15 +145,9 @@ export default function PurchaseForm({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
-      {message && (
-        <div
-          className={`px-4 py-3 rounded-lg text-sm font-medium ${
-            message.type === "success"
-              ? "bg-green-50 text-green-700 border border-green-200"
-              : "bg-red-50 text-red-700 border border-red-200"
-          }`}
-        >
-          {message.text}
+      {formError && (
+        <div className="px-4 py-3 rounded-lg text-sm font-medium bg-red-50 text-red-700 border border-red-200">
+          {formError}
         </div>
       )}
 

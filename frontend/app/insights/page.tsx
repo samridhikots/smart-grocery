@@ -37,6 +37,30 @@ function formatValue(key: string, val: unknown): string {
   return String(val);
 }
 
+function SectionSkeleton({ rows = 3 }: { rows?: number }) {
+  return (
+    <div className="space-y-3 animate-pulse">
+      {Array.from({ length: rows }).map((_, i) => (
+        <div key={i} className="h-16 bg-gray-100 rounded-2xl" />
+      ))}
+    </div>
+  );
+}
+
+function SectionError({ message, onRetry }: { message: string; onRetry: () => void }) {
+  return (
+    <div className="flex items-center justify-between gap-4 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl text-sm">
+      <div className="flex items-center gap-2">
+        <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+        <span>{message}</span>
+      </div>
+      <button onClick={onRetry} className="flex items-center gap-1.5 font-semibold hover:underline flex-shrink-0">
+        <RefreshCw className="w-3.5 h-3.5" /> Retry
+      </button>
+    </div>
+  );
+}
+
 function InsightCard({ insight, index = 0 }: { insight: Insight; index?: number }) {
   const [expanded, setExpanded] = useState(false);
   const Icon =
@@ -70,7 +94,11 @@ function InsightCard({ insight, index = 0 }: { insight: Insight; index?: number 
           </div>
         </div>
         {dataEntries.length > 0 && (
-          <button onClick={() => setExpanded(!expanded)} className="text-gray-400 hover:text-gray-600 flex-shrink-0 transition-colors">
+          <button
+            onClick={() => setExpanded(!expanded)}
+            aria-label={expanded ? "Collapse details" : "Expand details"}
+            className="text-gray-400 hover:text-gray-600 flex-shrink-0 transition-colors"
+          >
             <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${expanded ? "rotate-180" : ""}`} />
           </button>
         )}
@@ -97,8 +125,8 @@ function AnomalyDot(props: { cx?: number; cy?: number; payload?: HistoryPoint })
   if (payload?.is_anomaly) {
     return (
       <g>
-        <circle cx={cx} cy={cy} r={7} fill="#ef4444" stroke="#fff" strokeWidth={2} />
-        <text x={cx} y={cy - 12} textAnchor="middle" fill="#ef4444" fontSize={10} fontWeight={600}>!</text>
+        <circle cx={cx} cy={cy} r={7} fill={BRAND_COLORS.red} stroke="#fff" strokeWidth={2} />
+        <text x={cx} y={cy - 12} textAnchor="middle" fill={BRAND_COLORS.red} fontSize={10} fontWeight={600}>!</text>
       </g>
     );
   }
@@ -116,7 +144,7 @@ function SpendingHistory({ history }: { history: HistoryPoint[] }) {
           <XAxis dataKey="month" tick={{ fontSize: 11 }} />
           <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => `₹${v}`} />
           <Tooltip
-            contentStyle={{ borderRadius: "12px", border: "1.5px solid #e5e0d8", fontSize: 12, background: "#fff" }}
+            contentStyle={{ borderRadius: "12px", border: "1.5px solid var(--border-card)", fontSize: 12, background: "#fff" }}
             formatter={(value, _name, entry) => [
               `₹${Number(value).toFixed(0)}${entry.payload?.is_anomaly ? "  ⚠ Anomaly" : ""}`,
               "Spend",
@@ -149,34 +177,55 @@ type CategoryFilter = "stock" | "waste" | "budget" | null;
 
 export default function InsightsPage() {
   const { user } = useAuth();
-  const [insights,     setInsights]     = useState<Insight[]>([]);
-  const [overspending, setOverspending] = useState<OverspendingResult | null>(null);
-  const [loading,      setLoading]      = useState(true);
-  const [error,        setError]        = useState("");
 
-  /* ── Interactive filter ── */
-  const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>(null);
+  const [insights,           setInsights]           = useState<Insight[]>([]);
+  const [overspending,       setOverspending]       = useState<OverspendingResult | null>(null);
+  const [insightsLoading,    setInsightsLoading]    = useState(true);
+  const [overspendingLoading,setOverspendingLoading]= useState(true);
+  const [insightsError,      setInsightsError]      = useState("");
+  const [overspendingError,  setOverspendingError]  = useState("");
+  const [categoryFilter,     setCategoryFilter]     = useState<CategoryFilter>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError("");
+  const anyLoading = insightsLoading || overspendingLoading;
+
+  const loadInsights = useCallback(async () => {
+    setInsightsLoading(true);
+    setInsightsError("");
     try {
-      const [ins, over] = await Promise.all([api.getInsights(), api.getOverspending()]);
+      const ins = await api.getInsights();
       setInsights(ins.insights);
-      setOverspending(over);
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Failed to load insights");
+      setInsightsError(e instanceof Error ? e.message : "Failed to load insights");
     } finally {
-      setLoading(false);
+      setInsightsLoading(false);
     }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  const loadOverspending = useCallback(async () => {
+    setOverspendingLoading(true);
+    setOverspendingError("");
+    try {
+      const over = await api.getOverspending();
+      setOverspending(over);
+    } catch (e: unknown) {
+      setOverspendingError(e instanceof Error ? e.message : "Failed to load spending data");
+    } finally {
+      setOverspendingLoading(false);
+    }
+  }, []);
 
-  const criticalCount = insights.filter((i) => i.severity === "critical").length;
-  const highCount     = insights.filter((i) => i.severity === "high").length;
-  const top3          = insights.filter((i) => i.severity !== "low").slice(0, 3);
-  const top3Titles    = new Set(top3.map((i) => i.title));
+  const loadAll = useCallback(() => {
+    loadInsights();
+    loadOverspending();
+  }, [loadInsights, loadOverspending]);
+
+  useEffect(() => { loadAll(); }, [loadAll]);
+
+  /* ── Derived insight groups ── */
+  const criticalCount  = insights.filter((i) => i.severity === "critical").length;
+  const highCount      = insights.filter((i) => i.severity === "high").length;
+  const top3           = insights.filter((i) => i.severity !== "low").slice(0, 3);
+  const top3Titles     = new Set(top3.map((i) => i.title));
 
   const stockInsights  = insights.filter((i) => !top3Titles.has(i.title) && (i.type === "demand" || i.title.toLowerCase().includes("stock") || i.title.toLowerCase().includes("running")));
   const wasteInsights  = insights.filter((i) => !top3Titles.has(i.title) && (i.type === "waste"  || i.title.toLowerCase().includes("waste") || i.title.toLowerCase().includes("spoil")));
@@ -194,22 +243,10 @@ export default function InsightsPage() {
     ? allGroups.filter((g) => g.key === categoryFilter)
     : allGroups;
 
-  if (loading) {
-    return (
-      <div className="space-y-6 animate-pulse">
-        <div className="h-8 w-40 bg-gray-200 rounded-xl" />
-        <div className="grid grid-cols-4 gap-4">
-          {[1,2,3,4].map((i) => <div key={i} className="h-20 bg-gray-200 rounded-2xl" />)}
-        </div>
-        <div className="h-40 bg-gray-200 rounded-2xl" />
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-8">
 
-      {/* Header */}
+      {/* Header — always visible immediately */}
       <div className="flex items-center justify-between animate-fade-in">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
@@ -220,43 +257,40 @@ export default function InsightsPage() {
             <span className="font-semibold text-gray-600">{user?.name ?? "your household"}</span>
           </p>
         </div>
-        <button onClick={load} disabled={loading} className="btn-secondary text-sm flex items-center gap-1.5 disabled:opacity-50">
-          <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} /> Refresh
+        <button onClick={loadAll} disabled={anyLoading} className="btn-secondary text-sm flex items-center gap-1.5 disabled:opacity-50">
+          <RefreshCw className={`w-3.5 h-3.5 ${anyLoading ? "animate-spin" : ""}`} /> Refresh
         </button>
       </div>
 
-      {error && (
-        <div className="flex items-center justify-between gap-4 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl text-sm animate-fade-in">
-          <div className="flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4 flex-shrink-0" />
-            <span>{error}</span>
-          </div>
-          <button
-            onClick={load}
-            className="flex items-center gap-1.5 font-semibold hover:underline flex-shrink-0"
-          >
-            <RefreshCw className="w-3.5 h-3.5" /> Retry
-          </button>
-        </div>
-      )}
-
-      {/* Summary stat cards */}
+      {/* Summary stat cards — insights side shows skeleton, overspending side loads independently */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        {[
-          { val: criticalCount, label: "Critical",     borderColor: "#ef4444", textColor: "#b91c1c" },
-          { val: highCount,     label: "High Priority", borderColor: "#f97316", textColor: "#c2410c" },
-          { val: insights.length, label: "Total Insights", borderColor: "#9ca3af", textColor: "#374151" },
-        ].map((s, i) => (
-          <div
-            key={s.label}
-            className={`card border-l-4 animate-slide-up stagger-${i + 1}`}
-            style={{ borderLeftColor: s.borderColor }}
-          >
-            <p className="text-3xl font-bold tabular-nums" style={{ color: s.textColor }}>{s.val}</p>
-            <p className="text-xs font-bold uppercase tracking-widest text-gray-400 mt-1">{s.label}</p>
-          </div>
-        ))}
-        {overspending && (
+        {insightsLoading ? (
+          <>
+            {[1, 2, 3].map((i) => <div key={i} className="h-20 bg-gray-100 rounded-2xl animate-pulse" />)}
+          </>
+        ) : (
+          <>
+            {[
+              { val: criticalCount,    label: "Critical",       borderColor: "#ef4444", textColor: "#b91c1c" },
+              { val: highCount,        label: "High Priority",  borderColor: "#f97316", textColor: "#c2410c" },
+              { val: insights.length,  label: "Total Insights", borderColor: "#9ca3af", textColor: "#374151" },
+            ].map((s, i) => (
+              <div
+                key={s.label}
+                className={`card border-l-4 animate-slide-up stagger-${i + 1}`}
+                style={{ borderLeftColor: s.borderColor }}
+              >
+                <p className="text-3xl font-bold tabular-nums" style={{ color: s.textColor }}>{s.val}</p>
+                <p className="text-xs font-bold uppercase tracking-widest text-gray-400 mt-1">{s.label}</p>
+              </div>
+            ))}
+          </>
+        )}
+
+        {/* Overspending card — independent */}
+        {overspendingLoading ? (
+          <div className="h-20 bg-gray-100 rounded-2xl animate-pulse" />
+        ) : overspending ? (
           <div
             className={`card border-l-4 animate-slide-up stagger-4 ${
               overspending.is_anomaly ? "bg-red-50 border-l-red-500" : "bg-green-50 border-l-green-500"
@@ -269,11 +303,18 @@ export default function InsightsPage() {
               {overspending.is_anomaly ? "Overspending" : "Spending OK"}
             </p>
           </div>
-        )}
+        ) : null}
       </div>
 
-      {/* Top 3 Actions Today */}
-      {top3.length > 0 && (
+      {/* Top 3 actions — shows as soon as insights arrive */}
+      {insightsLoading ? (
+        <div className="card animate-pulse">
+          <div className="h-4 w-48 bg-gray-200 rounded mb-4" />
+          <div className="space-y-3">
+            {[1, 2, 3].map((i) => <div key={i} className="h-14 bg-gray-100 rounded-xl" />)}
+          </div>
+        </div>
+      ) : top3.length > 0 && (
         <div
           className="card animate-slide-up stagger-2"
           style={{ background: "#fffbf2", borderColor: "#f0d9a8" }}
@@ -283,7 +324,7 @@ export default function InsightsPage() {
           </h2>
           <div className="space-y-2">
             {top3.map((ins, i) => (
-              <div key={i} className={`flex items-start gap-3 bg-white rounded-xl p-3 border border-yellow-100 animate-slide-up stagger-${i + 1}`}>
+              <div key={ins.title} className={`flex items-start gap-3 bg-white rounded-xl p-3 border border-yellow-100 animate-slide-up stagger-${i + 1}`}>
                 <span
                   className="w-6 h-6 rounded-full text-xs font-bold flex items-center justify-center flex-shrink-0 mt-0.5 text-white"
                   style={{ background: BRAND_COLORS.amber }}
@@ -307,8 +348,18 @@ export default function InsightsPage() {
         </div>
       )}
 
-      {/* Overspending */}
-      {overspending && (
+      {/* Overspending section — shows as soon as overspending data arrives (~500ms) */}
+      {overspendingLoading ? (
+        <div className="card animate-pulse space-y-4">
+          <div className="h-4 w-40 bg-gray-200 rounded" />
+          <div className="grid grid-cols-3 gap-4">
+            {[1, 2, 3].map((i) => <div key={i} className="h-20 bg-gray-100 rounded-xl" />)}
+          </div>
+          <div className="h-[280px] bg-gray-100 rounded-xl" />
+        </div>
+      ) : overspendingError ? (
+        <SectionError message={overspendingError} onRetry={loadOverspending} />
+      ) : overspending && (
         <div className="card animate-slide-up">
           <h2 className="text-sm font-semibold text-gray-800 mb-4 flex items-center gap-2">
             <AlertCircle className="w-4 h-4 text-orange-500" /> Overspending Analysis
@@ -338,8 +389,17 @@ export default function InsightsPage() {
         </div>
       )}
 
-      {/* Grouped insights with interactive filter chips */}
-      {insights.length === 0 ? (
+      {/* Grouped insights — shows as soon as insights arrive */}
+      {insightsLoading ? (
+        <div className="space-y-4">
+          <div className="flex gap-2 animate-pulse">
+            {[1, 2, 3, 4].map((i) => <div key={i} className="h-8 w-20 bg-gray-100 rounded-full" />)}
+          </div>
+          <SectionSkeleton rows={4} />
+        </div>
+      ) : insightsError ? (
+        <SectionError message={insightsError} onRetry={loadInsights} />
+      ) : insights.length === 0 ? (
         <EmptyState
           icon={ShoppingCart}
           title="No insights yet"
@@ -393,12 +453,11 @@ export default function InsightsPage() {
                 </h3>
                 <div className="space-y-2">
                   {group.items.map((insight, i) => (
-                    <InsightCard key={i} insight={insight} index={i} />
+                    <InsightCard key={insight.title} insight={insight} index={i} />
                   ))}
                 </div>
               </div>
             ))}
-
             {visibleGroups.length === 0 && (
               <div className="card text-center text-gray-400 py-8 animate-fade-in">
                 No {categoryFilter} insights found.

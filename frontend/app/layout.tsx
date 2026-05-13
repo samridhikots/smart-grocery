@@ -11,7 +11,10 @@ import ErrorBoundary from "@/components/ErrorBoundary";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "SmartGrocery — India",
+  title: {
+    default: "SmartGrocery — India",
+    template: "%s | SmartGrocery",
+  },
   description: "AI-powered grocery management for Indian households — save money, reduce waste, shop smarter.",
 };
 
