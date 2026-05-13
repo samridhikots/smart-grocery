@@ -32,8 +32,15 @@ export default function Navbar() {
         setMoreOpen(false);
       }
     }
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") setMoreOpen(false);
+    }
     document.addEventListener("mousedown", onClickOutside);
-    return () => document.removeEventListener("mousedown", onClickOutside);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onClickOutside);
+      document.removeEventListener("keydown", onKeyDown);
+    };
   }, []);
 
   const handleLogout = () => {
@@ -121,6 +128,9 @@ export default function Navbar() {
               <div className="relative" ref={moreRef}>
                 <button
                   onClick={() => setMoreOpen((o) => !o)}
+                  aria-haspopup="true"
+                  aria-expanded={moreOpen}
+                  aria-label="More navigation links"
                   className={`flex items-center gap-1 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-150 ${
                     moreActive || moreOpen
                       ? "bg-green-50 text-green-700"
@@ -135,6 +145,8 @@ export default function Navbar() {
 
                 {moreOpen && (
                   <div
+                    role="menu"
+                    aria-label="More links"
                     className="absolute right-0 top-full mt-2 w-56 bg-white rounded-2xl overflow-hidden animate-slide-down"
                     style={{
                       border: "1.5px solid #e5e0d8",
@@ -145,6 +157,7 @@ export default function Navbar() {
                       <Link
                         key={href}
                         href={href}
+                        role="menuitem"
                         onClick={() => setMoreOpen(false)}
                         className={`flex items-center justify-between px-4 py-3 text-sm transition-colors ${
                           pathname === href

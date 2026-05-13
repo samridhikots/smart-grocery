@@ -3,7 +3,7 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { api, Purchase, WasteAlert, DemandPrediction } from "@/services/api";
 import { BarChartComponent, LineChartComponent } from "@/components/Chart";
 import Table from "@/components/Table";
-import { ShoppingCart, AlertTriangle, TrendingUp, ChevronDown, ChevronUp, Zap, ArrowRight } from "lucide-react";
+import { ShoppingCart, AlertTriangle, TrendingUp, ChevronDown, ChevronUp, Zap, ArrowRight, RefreshCw } from "lucide-react";
 import { CATEGORY_COLORS, RISK_COLORS } from "@/lib/constants";
 import { useAuth } from "@/contexts/AuthContext";
 import Link from "next/link";
@@ -109,9 +109,11 @@ export default function Dashboard() {
   const [waste,     setWaste]     = useState<WasteAlert[]>([]);
   const [demand,    setDemand]    = useState<DemandPrediction[]>([]);
   const [loading,   setLoading]   = useState(true);
+  const [error,     setError]     = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
+    setError("");
     try {
       const [p, w, d] = await Promise.all([
         api.getPurchases(200),
@@ -121,8 +123,8 @@ export default function Dashboard() {
       setPurchases(p);
       setWaste(w.waste_alerts);
       setDemand(d.predictions);
-    } catch (e) {
-      console.error(e);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Failed to load dashboard data");
     } finally {
       setLoading(false);
     }
@@ -195,6 +197,22 @@ export default function Dashboard() {
   ];
 
   const [chartsOpen, setChartsOpen] = useState(false);
+
+  /* ── Error state ── */
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[40vh] text-center p-8 animate-fade-in">
+        <div className="w-14 h-14 bg-red-100 rounded-full flex items-center justify-center mb-4">
+          <AlertTriangle className="w-7 h-7 text-red-500" />
+        </div>
+        <h2 className="text-lg font-semibold text-gray-900 mb-1">Failed to load dashboard</h2>
+        <p className="text-sm text-gray-500 mb-6 max-w-sm">{error}</p>
+        <button onClick={load} className="btn-primary flex items-center gap-2">
+          <RefreshCw className="w-4 h-4" /> Try again
+        </button>
+      </div>
+    );
+  }
 
   /* ── Loading skeleton ── */
   if (loading) {
@@ -340,7 +358,9 @@ export default function Dashboard() {
           </h1>
           <p className="text-sm text-gray-400 mt-0.5">{today}</p>
         </div>
-        <button onClick={load} className="btn-secondary text-sm">Refresh</button>
+        <button onClick={load} disabled={loading} className="btn-secondary text-sm flex items-center gap-1.5 disabled:opacity-50">
+          <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} /> Refresh
+        </button>
       </div>
 
       {/* ⚡ Top actions today */}

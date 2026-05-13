@@ -2,7 +2,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { api, Insight, OverspendingResult } from "@/services/api";
 import { useAuth } from "@/contexts/AuthContext";
-import { Lightbulb, AlertCircle, TrendingUp, Info, ChevronDown, RefreshCw, Zap } from "lucide-react";
+import { Lightbulb, AlertCircle, TrendingUp, Info, ChevronDown, RefreshCw, Zap, AlertTriangle } from "lucide-react";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer,
@@ -218,13 +218,24 @@ export default function InsightsPage() {
             <span className="font-semibold text-gray-600">{user?.name ?? "your household"}</span>
           </p>
         </div>
-        <button onClick={load} className="btn-secondary text-sm">
-          <RefreshCw className="w-3.5 h-3.5" /> Refresh
+        <button onClick={load} disabled={loading} className="btn-secondary text-sm flex items-center gap-1.5 disabled:opacity-50">
+          <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} /> Refresh
         </button>
       </div>
 
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl text-sm animate-fade-in">{error}</div>
+        <div className="flex items-center justify-between gap-4 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl text-sm animate-fade-in">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+            <span>{error}</span>
+          </div>
+          <button
+            onClick={load}
+            className="flex items-center gap-1.5 font-semibold hover:underline flex-shrink-0"
+          >
+            <RefreshCw className="w-3.5 h-3.5" /> Retry
+          </button>
+        </div>
       )}
 
       {/* Summary stat cards */}

@@ -1,9 +1,11 @@
 "use client";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { api, DemandPrediction, WasteAlert, OptimizationResult, OptimizedItem } from "@/services/api";
+import { useFocusTrap } from "@/hooks/useFocusTrap";
 import Table from "@/components/Table";
-import { ShoppingBag, Trash2, DollarSign, Copy, Share2, Check, HelpCircle, ArrowRight, X } from "lucide-react";
+import { ShoppingBag, Trash2, DollarSign, Copy, Share2, Check, HelpCircle, ArrowRight, X, RefreshCw } from "lucide-react";
 import { RISK_COLORS, CATEGORIES } from "@/lib/constants";
+import { useToast } from "@/contexts/ToastContext";
 
 type Tab = "demand" | "waste" | "budget";
 
@@ -119,6 +121,8 @@ function LogAsBoughtModal({
   const [purchaseDate, setPurchaseDate] = useState(new Date().toISOString().split("T")[0]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(dialogRef, true, onClose);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -142,11 +146,17 @@ function LogAsBoughtModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 space-y-4">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-sm p-4" aria-hidden="true">
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="log-modal-title"
+        className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 space-y-4"
+      >
         <div className="flex items-center justify-between">
-          <h2 className="font-bold text-gray-900">Log as bought</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+          <h2 id="log-modal-title" className="font-bold text-gray-900">Log as bought</h2>
+          <button onClick={onClose} aria-label="Close modal" className="text-gray-400 hover:text-gray-600">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -214,7 +224,7 @@ export default function RecommendationsPage() {
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
   const [logModal, setLogModal] = useState<DemandPrediction | null>(null);
-  const [logToast, setLogToast] = useState("");
+  const { showToast } = useToast();
 
   const loadDemand = useCallback(async () => {
     setLoading(true);
@@ -268,8 +278,7 @@ export default function RecommendationsPage() {
   function handleLogSuccess() {
     const item = logModal?.item ?? "";
     setLogModal(null);
-    setLogToast(`${item} logged successfully!`);
-    setTimeout(() => setLogToast(""), 3000);
+    showToast(`${item} logged successfully!`);
     loadDemand();
   }
 
@@ -303,13 +312,6 @@ export default function RecommendationsPage() {
         />
       )}
 
-      {logToast && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 text-white text-sm font-semibold px-5 py-3 rounded-2xl shadow-xl flex items-center gap-2 animate-slide-up"
-          style={{ background: "var(--green-primary)" }}>
-          <Check className="w-4 h-4" /> {logToast}
-        </div>
-      )}
-
       <div className="flex items-center justify-between animate-fade-in">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
@@ -340,7 +342,15 @@ export default function RecommendationsPage() {
       </div>
 
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">{error}</div>
+        <div className="flex items-center justify-between gap-4 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
+          <span>{error}</span>
+          <button
+            onClick={() => { if (tab === "demand") loadDemand(); else if (tab === "waste") loadWaste(); else loadBudget(); }}
+            className="flex items-center gap-1.5 font-semibold hover:underline flex-shrink-0"
+          >
+            <RefreshCw className="w-3.5 h-3.5" /> Retry
+          </button>
+        </div>
       )}
 
       {loading ? (
