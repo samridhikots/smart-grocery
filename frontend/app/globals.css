@@ -9,6 +9,9 @@
     --green-light:   #e8f5eb;
     --bg-page:       #f4f1ec;
     --border-card:   #e5e0d8;
+    --amber-warning: #f59e0b;
+    --amber-deep:    #92600a;
+    --red-danger:    #ef4444;
   }
 
   body {

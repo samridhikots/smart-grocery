@@ -4,7 +4,7 @@ import { useSearchParams } from "next/navigation";
 import PurchaseForm from "@/components/Form";
 import Table from "@/components/Table";
 import { api, Purchase } from "@/services/api";
-import { PlusCircle, RefreshCw, Target, CheckCircle } from "lucide-react";
+import { PlusCircle, RefreshCw, CheckCircle, ChevronLeft, ChevronRight } from "lucide-react";
 import { CATEGORY_COLORS } from "@/lib/constants";
 
 const UNLOCK_MILESTONES = [
@@ -79,8 +79,11 @@ function AddPageInner() {
   const prefillItem     = searchParams.get("item") ?? "";
   const prefillQuantity = searchParams.get("quantity") ?? "";
 
+  const PAGE_SIZE = 10;
+
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [loading,   setLoading]   = useState(false);
+  const [page,      setPage]      = useState(1);
 
   const fetchPurchases = useCallback(async () => {
     setLoading(true);
@@ -93,6 +96,9 @@ function AddPageInner() {
       setLoading(false);
     }
   }, []);
+
+  const totalPages  = Math.max(1, Math.ceil(purchases.length / PAGE_SIZE));
+  const paginated   = purchases.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   useEffect(() => { fetchPurchases(); }, [fetchPurchases]);
 
@@ -135,7 +141,7 @@ function AddPageInner() {
       {/* Form */}
       <div className="card animate-slide-up stagger-1">
         <PurchaseForm
-          onSuccess={fetchPurchases}
+          onSuccess={() => { setPage(1); fetchPurchases(); }}
           prefillItem={prefillItem}
           prefillQuantity={prefillQuantity}
         />
@@ -156,9 +162,60 @@ function AddPageInner() {
         </div>
         <Table
           columns={columns as never}
-          data={purchases as never}
+          data={paginated as never}
           emptyMessage="No purchases yet. Add your first one above!"
         />
+
+        {purchases.length > PAGE_SIZE && (
+          <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-100">
+            <p className="text-xs text-gray-400">
+              Showing {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, purchases.length)} of {purchases.length}
+            </p>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page === 1}
+                aria-label="Previous page"
+                className="btn-secondary px-2 py-1.5 text-xs disabled:opacity-40"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              {Array.from({ length: totalPages }, (_, i) => i + 1)
+                .filter((p) => p === 1 || p === totalPages || Math.abs(p - page) <= 1)
+                .reduce<(number | "…")[]>((acc, p, idx, arr) => {
+                  if (idx > 0 && p - (arr[idx - 1] as number) > 1) acc.push("…");
+                  acc.push(p);
+                  return acc;
+                }, [])
+                .map((p, i) =>
+                  p === "…" ? (
+                    <span key={`ellipsis-${i}`} className="px-1 text-gray-400 text-xs">…</span>
+                  ) : (
+                    <button
+                      key={p}
+                      onClick={() => setPage(p as number)}
+                      className={`min-w-[32px] px-2 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                        page === p
+                          ? "text-white"
+                          : "bg-white border border-gray-200 text-gray-600 hover:bg-gray-50"
+                      }`}
+                      style={page === p ? { background: "var(--green-primary)" } : undefined}
+                    >
+                      {p}
+                    </button>
+                  )
+                )}
+              <button
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={page === totalPages}
+                aria-label="Next page"
+                className="btn-secondary px-2 py-1.5 text-xs disabled:opacity-40"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
     </div>

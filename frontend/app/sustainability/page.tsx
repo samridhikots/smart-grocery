@@ -2,8 +2,9 @@
 import { useEffect, useState, useCallback } from "react";
 import { api, SustainabilityResult, SustainabilityItem } from "@/services/api";
 import { useAuth } from "@/contexts/AuthContext";
-import { Leaf, RefreshCw, ChevronDown, ChevronUp } from "lucide-react";
+import { Leaf, RefreshCw, ChevronDown, ChevronUp, AlertTriangle } from "lucide-react";
 import { BarChartComponent } from "@/components/Chart";
+import { BRAND_COLORS } from "@/lib/constants";
 
 function EcoMeter({ value, max = 10, label }: { value: number; max?: number; label: string }) {
   const [barWidth, setBarWidth] = useState(0);
@@ -94,8 +95,8 @@ export default function SustainabilityPage() {
 
   const ecoScore  = report?.avg_eco_score ?? 0;
   const ecoLabel  = ecoScore >= 8 ? "Excellent 🌟" : ecoScore >= 6 ? "Good 🟢" : ecoScore >= 4 ? "Fair 🟡" : "Needs work 🔴";
-  const ecoColor  = ecoScore >= 8 ? "#15803d" : ecoScore >= 6 ? "#2d7a3a" : ecoScore >= 4 ? "#d97706" : "#dc2626";
-  const ringColor = ecoScore >= 6 ? "#2d7a3a" : ecoScore >= 4 ? "#f59e0b" : "#ef4444";
+  const ecoColor  = ecoScore >= 8 ? "#15803d" : ecoScore >= 6 ? BRAND_COLORS.green : ecoScore >= 4 ? "#d97706" : "#dc2626";
+  const ringColor = ecoScore >= 6 ? BRAND_COLORS.green : ecoScore >= 4 ? BRAND_COLORS.amber : BRAND_COLORS.red;
 
   const animatedScore = useCountUp(ecoScore, 1100);
 
@@ -123,7 +124,7 @@ export default function SustainabilityPage() {
     <div className="space-y-6">
 
       {/* Header */}
-      <div className="flex items-center justify-between animate-fade-in">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 animate-fade-in">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
             <Leaf className="w-6 h-6 text-emerald-600" /> Sustainability
@@ -133,34 +134,46 @@ export default function SustainabilityPage() {
             <span className="font-semibold text-gray-600">{user?.name ?? "your household"}</span>
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-shrink-0">
           <select
             value={months}
             onChange={(e) => setMonths(parseInt(e.target.value))}
-            className="btn-secondary text-sm pr-8"
-            style={{ paddingRight: "2rem" }}
+            className="btn-secondary text-sm"
           >
             <option value={1}>Last 1 month</option>
             <option value={3}>Last 3 months</option>
             <option value={6}>Last 6 months</option>
             <option value={12}>Last 12 months</option>
           </select>
-          <button onClick={load} className="btn-secondary text-sm">
-            <RefreshCw className="w-3.5 h-3.5" />
+          <button
+            onClick={load}
+            disabled={loading}
+            aria-label="Refresh sustainability data"
+            className="btn-secondary text-sm disabled:opacity-50"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
           </button>
         </div>
       </div>
 
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl text-sm animate-fade-in">{error}</div>
+        <div className="flex items-center justify-between gap-4 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl text-sm animate-fade-in">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+            <span>{error}</span>
+          </div>
+          <button onClick={load} className="flex items-center gap-1.5 font-semibold hover:underline flex-shrink-0">
+            <RefreshCw className="w-3.5 h-3.5" /> Retry
+          </button>
+        </div>
       )}
 
       {report && (
         <>
           {/* Hero: animated eco score ring */}
           <div className="card flex flex-col sm:flex-row items-center gap-8 py-8 animate-slide-up">
-            <div className="flex-shrink-0">
-              <svg width="140" height="140" viewBox="0 0 120 120">
+            <div className="flex-shrink-0 w-[140px]">
+              <svg width="140" height="140" viewBox="0 0 120 120" aria-label={`Eco score: ${ecoScore.toFixed(1)} out of 10`} role="img">
                 {/* track */}
                 <circle cx="60" cy="60" r="50" fill="none" stroke="#f0eeea" strokeWidth="12" />
                 {/* animated fill */}
@@ -287,7 +300,7 @@ export default function SustainabilityPage() {
                 <BarChartComponent
                   data={ecoScoreData}
                   xKey="item"
-                  bars={[{ key: "score", color: "#2d7a3a", name: "Eco Score (0-10)" }]}
+                  bars={[{ key: "score", color: BRAND_COLORS.green, name: "Eco Score (0-10)" }]}
                   title="Eco Scores by Item (higher = better)"
                   height={280}
                 />

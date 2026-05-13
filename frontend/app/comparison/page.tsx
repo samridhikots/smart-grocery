@@ -2,7 +2,8 @@
 import { useEffect, useState, useCallback } from "react";
 import { api, ComparisonResult, ConfusionMatrix } from "@/services/api";
 import { BarChartComponent, RadarChartComponent } from "@/components/Chart";
-import { BarChart2, Trophy, TrendingDown, TrendingUp } from "lucide-react";
+import { BarChart2, Trophy, TrendingDown, TrendingUp, RefreshCw, AlertTriangle } from "lucide-react";
+import { BRAND_COLORS } from "@/lib/constants";
 
 function MetricCard({ label, legacy, modern, higherIsBetter = true }: {
   label: string; legacy: number; modern: number; higherIsBetter?: boolean;
@@ -78,7 +79,7 @@ function ConfusionMatrixDisplay({ cm, modelName }: { cm: ConfusionMatrix; modelN
 function FeatureImportanceBar({ name, score }: { name: string; score: number }) {
   return (
     <div className="flex items-center gap-3">
-      <span className="text-sm text-gray-600 w-36 truncate">{name}</span>
+      <span className="text-sm text-gray-600 w-24 sm:w-36 truncate flex-shrink-0" title={name}>{name}</span>
       <div className="flex-1 h-2.5 bg-gray-100 rounded-full overflow-hidden">
         <div
           className="h-full bg-green-500 rounded-full transition-all"
@@ -112,14 +113,31 @@ export default function ComparisonPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin w-8 h-8 border-4 border-green-500 border-t-transparent rounded-full" />
+      <div className="space-y-6 animate-pulse">
+        <div className="h-8 w-52 bg-gray-200 rounded-xl" />
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="h-28 bg-gray-200 rounded-2xl" />
+          <div className="h-28 bg-gray-200 rounded-2xl" />
+        </div>
+        <div className="h-64 bg-gray-200 rounded-2xl" />
+        <div className="h-64 bg-gray-200 rounded-2xl" />
       </div>
     );
   }
 
   if (error) {
-    return <div className="bg-red-50 text-red-700 px-4 py-3 rounded-lg">{error}</div>;
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[40vh] text-center p-8 animate-fade-in">
+        <div className="w-14 h-14 bg-red-100 rounded-full flex items-center justify-center mb-4">
+          <AlertTriangle className="w-7 h-7 text-red-500" />
+        </div>
+        <h2 className="text-lg font-semibold text-gray-900 mb-1">Failed to load comparison</h2>
+        <p className="text-sm text-gray-500 mb-6 max-w-sm">{error}</p>
+        <button onClick={load} className="btn-primary flex items-center gap-2">
+          <RefreshCw className="w-4 h-4" /> Try again
+        </button>
+      </div>
+    );
   }
 
   if (!data) return null;
@@ -217,7 +235,7 @@ export default function ComparisonPage() {
               ]}
               xKey="model"
               bars={[
-                { key: "MAE", color: "#f59e0b", name: "MAE" },
+                { key: "MAE", color: BRAND_COLORS.amber, name: "MAE" },
                 { key: "RMSE", color: "#ef4444", name: "RMSE" },
                 { key: "R2", color: "#22c55e", name: "R²" },
               ]}
@@ -245,7 +263,7 @@ export default function ComparisonPage() {
               data={wasteBarData}
               xKey="metric"
               bars={[
-                { key: wp.legacy.name, color: "#f59e0b", name: "Logistic Reg" },
+                { key: wp.legacy.name, color: BRAND_COLORS.amber, name: "Logistic Reg" },
                 { key: wp.modern.name, color: "#22c55e", name: "TabNet" },
               ]}
               title="Waste Models — Metric Comparison"
@@ -294,15 +312,15 @@ export default function ComparisonPage() {
       {/* Full metrics table */}
       <div className="card overflow-x-auto">
         <h2 className="text-lg font-semibold text-gray-800 mb-4">Complete Metrics Summary</h2>
-        <table className="w-full text-sm">
+        <table className="w-full text-sm min-w-[480px]">
           <thead>
             <tr className="text-left border-b border-gray-100">
-              <th className="pb-2 text-gray-500 font-medium">Model</th>
-              <th className="pb-2 text-gray-500 font-medium">Type</th>
-              <th className="pb-2 text-gray-500 font-medium">Task</th>
-              <th className="pb-2 text-gray-500 font-medium">MAE / Acc</th>
-              <th className="pb-2 text-gray-500 font-medium">RMSE / F1</th>
-              <th className="pb-2 text-gray-500 font-medium">R² / AUC</th>
+              <th className="pb-2 text-gray-500 font-medium whitespace-nowrap pr-4">Model</th>
+              <th className="pb-2 text-gray-500 font-medium whitespace-nowrap pr-4">Type</th>
+              <th className="pb-2 text-gray-500 font-medium whitespace-nowrap pr-4">Task</th>
+              <th className="pb-2 text-gray-500 font-medium whitespace-nowrap pr-4">MAE / Acc</th>
+              <th className="pb-2 text-gray-500 font-medium whitespace-nowrap pr-4">RMSE / F1</th>
+              <th className="pb-2 text-gray-500 font-medium whitespace-nowrap">R² / AUC</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-50">

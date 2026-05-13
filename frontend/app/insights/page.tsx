@@ -2,7 +2,9 @@
 import { useEffect, useState, useCallback } from "react";
 import { api, Insight, OverspendingResult } from "@/services/api";
 import { useAuth } from "@/contexts/AuthContext";
-import { Lightbulb, AlertCircle, TrendingUp, Info, ChevronDown, RefreshCw, Zap, AlertTriangle } from "lucide-react";
+import { Lightbulb, AlertCircle, TrendingUp, Info, ChevronDown, RefreshCw, Zap, AlertTriangle, ShoppingCart } from "lucide-react";
+import EmptyState from "@/components/EmptyState";
+import { BRAND_COLORS } from "@/lib/constants";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer,
@@ -100,7 +102,7 @@ function AnomalyDot(props: { cx?: number; cy?: number; payload?: HistoryPoint })
       </g>
     );
   }
-  return <circle cx={cx} cy={cy} r={3} fill="#2d7a3a" />;
+  return <circle cx={cx} cy={cy} r={3} fill={BRAND_COLORS.green} />;
 }
 
 function SpendingHistory({ history }: { history: HistoryPoint[] }) {
@@ -123,7 +125,7 @@ function SpendingHistory({ history }: { history: HistoryPoint[] }) {
           <Line
             type="monotone"
             dataKey="spend"
-            stroke="#2d7a3a"
+            stroke={BRAND_COLORS.green}
             strokeWidth={2}
             dot={<AnomalyDot />}
             activeDot={{ r: 5 }}
@@ -276,7 +278,7 @@ export default function InsightsPage() {
           className="card animate-slide-up stagger-2"
           style={{ background: "#fffbf2", borderColor: "#f0d9a8" }}
         >
-          <h2 className="text-sm font-bold flex items-center gap-2 mb-3" style={{ color: "#92600a" }}>
+          <h2 className="text-sm font-bold flex items-center gap-2 mb-3" style={{ color: BRAND_COLORS.amberDeep }}>
             <Zap className="w-4 h-4" /> Your top {top3.length} action{top3.length > 1 ? "s" : ""} today
           </h2>
           <div className="space-y-2">
@@ -284,7 +286,7 @@ export default function InsightsPage() {
               <div key={i} className={`flex items-start gap-3 bg-white rounded-xl p-3 border border-yellow-100 animate-slide-up stagger-${i + 1}`}>
                 <span
                   className="w-6 h-6 rounded-full text-xs font-bold flex items-center justify-center flex-shrink-0 mt-0.5 text-white"
-                  style={{ background: "#f59e0b" }}
+                  style={{ background: BRAND_COLORS.amber }}
                 >
                   {i + 1}
                 </span>
@@ -338,9 +340,13 @@ export default function InsightsPage() {
 
       {/* Grouped insights with interactive filter chips */}
       {insights.length === 0 ? (
-        <div className="card text-center text-gray-400 py-12 animate-fade-in">
-          No insights yet. Add a few purchases to generate personalised alerts.
-        </div>
+        <EmptyState
+          icon={ShoppingCart}
+          title="No insights yet"
+          message="Add a few grocery purchases and we'll generate personalised alerts about waste risk, budget overspend, and restocking needs."
+          ctaLabel="Add a purchase"
+          ctaHref="/add"
+        />
       ) : (
         <div className="space-y-6">
           {/* Filter chips */}

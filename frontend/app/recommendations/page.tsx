@@ -2,6 +2,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { api, DemandPrediction, WasteAlert, OptimizationResult, OptimizedItem } from "@/services/api";
 import { useFocusTrap } from "@/hooks/useFocusTrap";
+import EmptyState from "@/components/EmptyState";
 import Table from "@/components/Table";
 import { ShoppingBag, Trash2, DollarSign, Copy, Share2, Check, HelpCircle, ArrowRight, X, RefreshCw } from "lucide-react";
 import { RISK_COLORS, CATEGORIES } from "@/lib/constants";
@@ -225,6 +226,7 @@ export default function RecommendationsPage() {
   const [copied, setCopied] = useState(false);
   const [logModal, setLogModal] = useState<DemandPrediction | null>(null);
   const { showToast } = useToast();
+  const loadedTabs = useRef(new Set<Tab>());
 
   const loadDemand = useCallback(async () => {
     setLoading(true);
@@ -270,15 +272,19 @@ export default function RecommendationsPage() {
   }, [budgetInput, householdSize, selectedCats]);
 
   useEffect(() => {
+    if (loadedTabs.current.has(tab)) return;
+    loadedTabs.current.add(tab);
     if (tab === "demand") loadDemand();
     else if (tab === "waste") loadWaste();
     else loadBudget();
-  }, [tab, loadDemand, loadWaste, loadBudget]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab]);
 
   function handleLogSuccess() {
     const item = logModal?.item ?? "";
     setLogModal(null);
     showToast(`${item} logged successfully!`);
+    loadedTabs.current.delete("demand");
     loadDemand();
   }
 
@@ -423,15 +429,28 @@ export default function RecommendationsPage() {
               )}
 
               {demand.length === 0 && (
-                <div className="card text-center text-gray-400 py-12 animate-fade-in">
-                  Add a few purchases to generate personalised shopping predictions.
-                </div>
+                <EmptyState
+                  icon={ShoppingBag}
+                  title="No predictions yet"
+                  message="Log a few grocery purchases and we'll start predicting what you need to restock and when."
+                  ctaLabel="Add a purchase"
+                  ctaHref="/add"
+                />
               )}
             </div>
           )}
 
           {/* Use Before Spoil tab */}
-          {tab === "waste" && (
+          {tab === "waste" && waste.length === 0 && (
+            <EmptyState
+              icon={Trash2}
+              title="Nothing to watch yet"
+              message="Once you've logged purchases, we'll track expiry risk and alert you before items spoil."
+              ctaLabel="Add a purchase"
+              ctaHref="/add"
+            />
+          )}
+          {tab === "waste" && waste.length > 0 && (
             <div className="space-y-6 animate-fade-in">
               <div className="grid grid-cols-3 gap-4">
                 {(["High", "Medium", "Low"] as const).map((level, i) => {
@@ -459,6 +478,7 @@ export default function RecommendationsPage() {
               </div>
             </div>
           )}
+
 
           {/* Budget tab */}
           {tab === "budget" && (
@@ -489,7 +509,7 @@ export default function RecommendationsPage() {
                     />
                   </div>
                   <div className="flex items-end">
-                    <button onClick={loadBudget} className="btn-primary">Optimize</button>
+                    <button onClick={() => { loadedTabs.current.delete("budget"); loadBudget(); }} className="btn-primary">Optimize</button>
                   </div>
                 </div>
                 <div>

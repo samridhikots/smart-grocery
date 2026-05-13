@@ -4,7 +4,7 @@ import { api, Purchase, WasteAlert, DemandPrediction } from "@/services/api";
 import { BarChartComponent, LineChartComponent } from "@/components/Chart";
 import Table from "@/components/Table";
 import { ShoppingCart, AlertTriangle, TrendingUp, ChevronDown, ChevronUp, Zap, ArrowRight, RefreshCw } from "lucide-react";
-import { CATEGORY_COLORS, RISK_COLORS } from "@/lib/constants";
+import { CATEGORY_COLORS, RISK_COLORS, BRAND_COLORS } from "@/lib/constants";
 import { useAuth } from "@/contexts/AuthContext";
 import Link from "next/link";
 
@@ -116,7 +116,7 @@ export default function Dashboard() {
     setError("");
     try {
       const [p, w, d] = await Promise.all([
-        api.getPurchases(200),
+        api.getPurchases(50),
         api.predictWaste(),
         api.predictDemand(),
       ]);
@@ -371,7 +371,7 @@ export default function Dashboard() {
         >
           <h2
             className="text-sm font-bold flex items-center gap-2 mb-3"
-            style={{ color: "#92600a" }}
+            style={{ color: BRAND_COLORS.amberDeep }}
           >
             <Zap className="w-4 h-4" />
             Today&apos;s top {topActions.length} action{topActions.length > 1 ? "s" : ""}
@@ -384,7 +384,7 @@ export default function Dashboard() {
               >
                 <span
                   className="w-6 h-6 rounded-full text-xs font-bold flex items-center justify-center flex-shrink-0 mt-0.5"
-                  style={{ background: "#f59e0b", color: "white" }}
+                  style={{ background: BRAND_COLORS.amber, color: "white" }}
                 >
                   {i + 1}
                 </span>
@@ -498,7 +498,7 @@ export default function Dashboard() {
               <BarChartComponent
                 data={spendData}
                 xKey="category"
-                bars={[{ key: "spend", color: "#2d7a3a", name: "Spend (₹)" }]}
+                bars={[{ key: "spend", color: BRAND_COLORS.green, name: "Spend (₹)" }]}
                 title="Spending by Category"
               />
               {(() => {
@@ -506,14 +506,14 @@ export default function Dashboard() {
                 waste.forEach((w) => { counts[w.risk_level]++; });
                 const riskData = [
                   { level: "High",   count: counts.High,   fill: "#ef4444" },
-                  { level: "Medium", count: counts.Medium, fill: "#f59e0b" },
+                  { level: "Medium", count: counts.Medium, fill: BRAND_COLORS.amber },
                   { level: "Low",    count: counts.Low,    fill: "#22c55e" },
                 ];
                 return (
                   <BarChartComponent
                     data={riskData}
                     xKey="level"
-                    bars={[{ key: "count", color: "#2d7a3a", name: "Items" }]}
+                    bars={[{ key: "count", color: BRAND_COLORS.green, name: "Items" }]}
                     title="Waste Risk Distribution"
                     height={250}
                   />
@@ -524,7 +524,7 @@ export default function Dashboard() {
               <LineChartComponent
                 data={monthlyTrend}
                 xKey="month"
-                lines={[{ key: "spend", color: "#2d7a3a", name: "Monthly Spend (₹)" }]}
+                lines={[{ key: "spend", color: BRAND_COLORS.green, name: "Monthly Spend (₹)" }]}
                 title="Month-over-Month Spend Trend"
                 height={280}
               />

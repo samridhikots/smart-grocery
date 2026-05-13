@@ -170,3 +170,11 @@ export const RISK_COLORS = {
   Medium: "badge-medium",
   Low:    "badge-low",
 };
+
+export const BRAND_COLORS = {
+  green:       "#2d7a3a",
+  greenDeep:   "#1e5c2a",
+  amber:       "#f59e0b",
+  amberDeep:   "#92600a",
+  red:         "#ef4444",
+} as const;
