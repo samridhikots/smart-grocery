@@ -1,10 +1,10 @@
 "use client";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useRef, useState, useEffect } from "react";
+import { useRef, useState, useEffect, useCallback } from "react";
 import {
   ShoppingCart, LayoutDashboard, PlusCircle,
-  Lightbulb, Leaf, BarChart2, LogOut, ChevronDown, ShoppingBag,
+  Lightbulb, Leaf, BarChart2, LogOut, ChevronDown, ShoppingBag, Check, X,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -23,8 +23,10 @@ export default function Navbar() {
   const pathname = usePathname();
   const router = useRouter();
   const { user, logout } = useAuth();
-  const [moreOpen, setMoreOpen] = useState(false);
-  const moreRef = useRef<HTMLDivElement>(null);
+  const [moreOpen,      setMoreOpen]      = useState(false);
+  const [confirmLogout, setConfirmLogout] = useState(false);
+  const moreRef    = useRef<HTMLDivElement>(null);
+  const moreButton = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     function onClickOutside(e: MouseEvent) {
@@ -43,10 +45,39 @@ export default function Navbar() {
     };
   }, []);
 
-  const handleLogout = () => {
-    logout();
-    router.replace("/");
-  };
+  // Auto-cancel logout confirmation after 3 s
+  useEffect(() => {
+    if (!confirmLogout) return;
+    const t = setTimeout(() => setConfirmLogout(false), 3000);
+    return () => clearTimeout(t);
+  }, [confirmLogout]);
+
+  const handleLogoutClick = useCallback(() => {
+    if (confirmLogout) {
+      logout();
+      router.replace("/");
+    } else {
+      setConfirmLogout(true);
+    }
+  }, [confirmLogout, logout, router]);
+
+  // Arrow key navigation inside More dropdown
+  const handleDropdownKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (!moreRef.current) return;
+    const items = Array.from(
+      moreRef.current.querySelectorAll<HTMLElement>('[role="menuitem"]')
+    );
+    const idx = items.indexOf(document.activeElement as HTMLElement);
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      items[(idx + 1) % items.length]?.focus();
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      items[(idx - 1 + items.length) % items.length]?.focus();
+    } else if (e.key === "Tab") {
+      setMoreOpen(false);
+    }
+  }, []);
 
   const moreActive = MORE_LINKS.some((l) => l.href === pathname);
 
@@ -127,6 +158,7 @@ export default function Navbar() {
               {/* More dropdown */}
               <div className="relative" ref={moreRef}>
                 <button
+                  ref={moreButton}
                   onClick={() => setMoreOpen((o) => !o)}
                   aria-haspopup="true"
                   aria-expanded={moreOpen}
@@ -147,6 +179,7 @@ export default function Navbar() {
                   <div
                     role="menu"
                     aria-label="More links"
+                    onKeyDown={handleDropdownKeyDown}
                     className="absolute right-0 top-full mt-2 w-56 bg-white rounded-2xl overflow-hidden animate-slide-down"
                     style={{
                       border: "1.5px solid #e5e0d8",
@@ -158,6 +191,7 @@ export default function Navbar() {
                         key={href}
                         href={href}
                         role="menuitem"
+                        tabIndex={0}
                         onClick={() => setMoreOpen(false)}
                         className={`flex items-center justify-between px-4 py-3 text-sm transition-colors ${
                           pathname === href
@@ -200,14 +234,34 @@ export default function Navbar() {
                     {user.name.split(" ")[0]}
                   </span>
                 </div>
-                <button
-                  onClick={handleLogout}
-                  className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium text-gray-500 hover:bg-red-50 hover:text-red-600 transition-colors"
-                  title="Sign out"
-                >
-                  <LogOut className="w-4 h-4" />
-                  <span className="hidden sm:inline">Sign out</span>
-                </button>
+                {confirmLogout ? (
+                  <div className="flex items-center gap-1">
+                    <span className="hidden sm:inline text-xs text-gray-500 font-medium mr-1">Sure?</span>
+                    <button
+                      onClick={handleLogoutClick}
+                      className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-red-50 text-red-600 hover:bg-red-100 transition-colors"
+                      aria-label="Confirm sign out"
+                    >
+                      <Check className="w-3.5 h-3.5" /> Yes
+                    </button>
+                    <button
+                      onClick={() => setConfirmLogout(false)}
+                      className="flex items-center px-2 py-1.5 rounded-lg text-xs text-gray-400 hover:bg-gray-100 transition-colors"
+                      aria-label="Cancel sign out"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={handleLogoutClick}
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium text-gray-500 hover:bg-red-50 hover:text-red-600 transition-colors"
+                    title="Sign out"
+                  >
+                    <LogOut className="w-4 h-4" />
+                    <span className="hidden sm:inline">Sign out</span>
+                  </button>
+                )}
               </>
             ) : (
               <div className="flex items-center gap-2">

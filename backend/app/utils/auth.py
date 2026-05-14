@@ -1,3 +1,4 @@
+import os
 from datetime import datetime, timedelta, timezone
 
 import bcrypt as _bcrypt
@@ -5,7 +6,7 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
 
-SECRET_KEY = "smart-grocery-india-jwt-secret-2024"
+SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret-key-change-in-production")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_DAYS = 30
 

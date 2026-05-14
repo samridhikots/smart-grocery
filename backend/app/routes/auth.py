@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -11,6 +11,7 @@ from app.utils.auth import (
     hash_password,
     verify_password,
 )
+from app.utils.limiter import limiter
 
 router = APIRouter()
 
@@ -65,7 +66,8 @@ def _auth_response(user: UserRecord) -> dict:
 # ---------------------------------------------------------------------------
 
 @router.post("/auth/signup", status_code=201)
-def signup(req: SignupRequest, db: Session = Depends(get_db)):
+@limiter.limit("5/minute")
+def signup(request: Request, req: SignupRequest, db: Session = Depends(get_db)):
     if not req.name.strip() or not req.email.strip() or not req.password:
         raise HTTPException(status_code=400, detail="All fields are required")
     if len(req.password) < 6:
@@ -90,7 +92,8 @@ def signup(req: SignupRequest, db: Session = Depends(get_db)):
 
 
 @router.post("/auth/login")
-def login(req: LoginRequest, db: Session = Depends(get_db)):
+@limiter.limit("10/minute")
+def login(request: Request, req: LoginRequest, db: Session = Depends(get_db)):
     user = db.query(UserRecord).filter(UserRecord.email == req.email.lower()).first()
     if not user or not verify_password(req.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Invalid email or password")

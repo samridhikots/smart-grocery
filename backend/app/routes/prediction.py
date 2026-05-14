@@ -1,8 +1,16 @@
-from fastapi import APIRouter, HTTPException
-import numpy as np
+import logging
 
+import numpy as np
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
+
+from app.database.db import get_db
+from app.services.user_stats import get_user_item_stats
+from app.utils.auth import get_current_user_id
+from app.utils.helpers import FESTIVAL_MONTHS, ITEMS, MONSOON_MONTHS, SUMMER_MONTHS
 from app.utils.store import model_store
-from app.utils.helpers import ITEMS, FESTIVAL_MONTHS, MONSOON_MONTHS, SUMMER_MONTHS
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -104,14 +112,21 @@ def _waste_row(item: str, stats: dict, quantity: float) -> np.ndarray:
 
 
 @router.get("/predict-demand")
-def predict_demand():
+def predict_demand(
+    user_id: int = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
     if not model_store["initialized"]:
         raise HTTPException(status_code=503, detail="Models not yet initialized")
 
     scaler       = model_store["demand"]["scaler"]
     xgb_model    = model_store["demand"]["xgboost"]
     linear_model = model_store["demand"]["linear"]
-    item_stats   = model_store["item_stats"]
+    item_stats   = get_user_item_stats(user_id, db, model_store["item_stats"])
+
+    # Use test R² as the base for confidence — honest about model quality
+    test_r2 = model_store["demand"]["metrics"]["xgboost"].get("r2", 0.7)
+    base_confidence = max(0.0, min(1.0, test_r2))
 
     results = []
     for item, stats in item_stats.items():
@@ -120,8 +135,9 @@ def predict_demand():
         xgb_p  = float(xgb_model.predict(row_sc)[0])
         lin_p  = float(linear_model.predict(row_sc)[0])
 
-        hist_avg   = stats.get("avg_quantity_last3", 1.0)
-        confidence = min(0.98, max(0.50, 1.0 - abs(xgb_p - hist_avg) / max(hist_avg, 0.1) * 0.5))
+        hist_avg  = stats.get("avg_quantity_last3", 1.0)
+        deviation = abs(xgb_p - hist_avg) / max(hist_avg, 0.1)
+        confidence = round(max(0.05, base_confidence - min(0.25, deviation * 0.15)), 2)
         days_next  = int(max(1, 30 / max(stats.get("purchase_frequency", 1.0), 0.1)))
 
         # Human-readable urgency message
@@ -159,14 +175,17 @@ def predict_demand():
 
 
 @router.get("/predict-waste")
-def predict_waste():
+def predict_waste(
+    user_id: int = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
     if not model_store["initialized"]:
         raise HTTPException(status_code=503, detail="Models not yet initialized")
 
-    scaler        = model_store["waste"]["scaler"]
-    tabnet_model  = model_store["waste"]["tabnet"]
+    scaler         = model_store["waste"]["scaler"]
+    tabnet_model   = model_store["waste"]["tabnet"]
     logistic_model = model_store["waste"]["logistic"]
-    item_stats    = model_store["item_stats"]
+    item_stats     = get_user_item_stats(user_id, db, model_store["item_stats"])
 
     results = []
     for item, stats in item_stats.items():

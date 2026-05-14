@@ -1,10 +1,12 @@
 "use client";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState } from "react";
 import { api, SustainabilityResult, SustainabilityItem } from "@/services/api";
 import { useAuth } from "@/contexts/AuthContext";
-import { Leaf, RefreshCw, ChevronDown, ChevronUp, AlertTriangle } from "lucide-react";
+import { Leaf, RefreshCw, ChevronDown, ChevronUp, AlertTriangle, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import { BarChartComponent } from "@/components/Chart";
-import { BRAND_COLORS } from "@/lib/constants";
+import { BRAND_COLORS, ECO_SCORE } from "@/lib/constants";
+import { useFetch } from "@/hooks/useFetch";
+import { useCountUp } from "@/hooks/useCountUp";
 
 function EcoMeter({ value, max = 10, label }: { value: number; max?: number; label: string }) {
   const [barWidth, setBarWidth] = useState(0);
@@ -32,77 +34,122 @@ function EcoMeter({ value, max = 10, label }: { value: number; max?: number; lab
   );
 }
 
-/* ── Animated count-up for the ring score ── */
-function useCountUp(target: number, duration = 900) {
-  const [val, setVal] = useState(0);
-  useEffect(() => {
-    if (target === 0) return;
-    let raf: number;
-    const start = Date.now();
-    const run = () => {
-      const t = Math.min((Date.now() - start) / duration, 1);
-      setVal(target * (1 - Math.pow(1 - t, 3)));
-      if (t < 1) raf = requestAnimationFrame(run);
-      else setVal(target);
-    };
-    raf = requestAnimationFrame(run);
-    return () => cancelAnimationFrame(raf);
-  }, [target, duration]);
-  return val;
+type SortCol = "item" | "category" | "eco_score" | "co2_per_unit_g" | "plastic_packaging" | "is_biodegradable";
+
+function SortIcon({ active, dir }: { active: boolean; dir: "asc" | "desc" }) {
+  if (!active) return <ArrowUpDown className="w-3 h-3 opacity-30" />;
+  return dir === "asc" ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />;
+}
+
+function ItemsTable({ items }: { items: SustainabilityItem[] }) {
+  const [sortCol, setSortCol] = useState<SortCol>("eco_score");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+
+  function toggleSort(col: SortCol) {
+    if (sortCol === col) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    else { setSortCol(col); setSortDir("desc"); }
+  }
+
+  const sorted = [...items].sort((a, b) => {
+    const mult = sortDir === "asc" ? 1 : -1;
+    const av = a[sortCol], bv = b[sortCol];
+    if (typeof av === "boolean") return (Number(av) - Number(bv)) * mult;
+    if (typeof av === "number")  return (av - (bv as number)) * mult;
+    return String(av).localeCompare(String(bv)) * mult;
+  });
+
+  const headers: { key: SortCol; label: string }[] = [
+    { key: "item",              label: "Item" },
+    { key: "category",         label: "Category" },
+    { key: "eco_score",        label: "Eco Score" },
+    { key: "co2_per_unit_g",   label: "CO₂/unit (g)" },
+    { key: "plastic_packaging", label: "Plastic" },
+    { key: "is_biodegradable", label: "Biodegradable" },
+  ];
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead>
+          <tr style={{ borderBottom: "1.5px solid #e5e0d8" }}>
+            {headers.map(({ key, label }) => (
+              <th
+                key={key}
+                onClick={() => toggleSort(key)}
+                className="text-left py-2 px-3 text-gray-400 font-bold text-xs uppercase tracking-wider cursor-pointer select-none hover:text-gray-600 transition-colors"
+              >
+                <span className="inline-flex items-center gap-1">
+                  {label}
+                  <SortIcon active={sortCol === key} dir={sortDir} />
+                </span>
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {sorted.map((it) => (
+            <tr key={it.item} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
+              <td className="py-2 px-3 font-medium text-gray-800">{it.item}</td>
+              <td className="py-2 px-3 text-gray-500">{it.category}</td>
+              <td className="py-2 px-3">
+                <span className={`font-bold ${it.eco_score >= ECO_SCORE.good ? "text-green-600" : it.eco_score >= ECO_SCORE.fair ? "text-yellow-600" : "text-red-600"}`}>
+                  {it.eco_score}/10
+                </span>
+              </td>
+              <td className="py-2 px-3 text-gray-600">{it.co2_per_unit_g}</td>
+              <td className="py-2 px-3">
+                <span className={it.plastic_packaging ? "text-red-500 font-medium" : "text-green-500 font-medium"}>
+                  {it.plastic_packaging ? "Yes" : "No"}
+                </span>
+              </td>
+              <td className="py-2 px-3">
+                <span className={it.is_biodegradable ? "text-green-500 font-medium" : "text-red-500 font-medium"}>
+                  {it.is_biodegradable ? "Yes" : "No"}
+                </span>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
 }
 
 export default function SustainabilityPage() {
   const { user }                         = useAuth();
-  const [report,     setReport]          = useState<SustainabilityResult | null>(null);
-  const [items,      setItems]           = useState<SustainabilityItem[]>([]);
   const [months,     setMonths]          = useState(1);
-  const [loading,    setLoading]         = useState(true);
-  const [error,      setError]           = useState("");
   const [detailOpen, setDetailOpen]      = useState(false);
+  const [ringOffset, setRingOffset]      = useState(314);
 
-  /* ── Animated SVG ring ── */
-  const [ringOffset, setRingOffset] = useState(314);
+  const { data, loading, error, refresh: load } = useFetch(
+    () => Promise.all([api.getSustainability(months), api.getSustainabilityItems()]),
+    [months]
+  );
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError("");
-    setRingOffset(314); // reset animation on reload
-    try {
-      const [r, it] = await Promise.all([
-        api.getSustainability(months),
-        api.getSustainabilityItems(),
-      ]);
-      setReport(r);
-      setItems(it);
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Failed to load sustainability data");
-    } finally {
-      setLoading(false);
-    }
-  }, [months]);
-
-  useEffect(() => { load(); }, [load]);
+  const report = data?.[0] as SustainabilityResult | undefined;
+  const items  = (data?.[1] as SustainabilityItem[] | undefined) ?? [];
 
   const topPolluters = [...items]
     .sort((a, b) => b.co2_per_unit_g - a.co2_per_unit_g)
     .slice(0, 10)
     .map((it) => ({ item: it.item, co2: it.co2_per_unit_g / 1000 }));
 
-  const ecoScoreData = items
+  const ecoScoreData = [...items]
     .sort((a, b) => b.eco_score - a.eco_score)
     .slice(0, 12)
     .map((it) => ({ item: it.item.length > 10 ? it.item.slice(0, 10) : it.item, score: it.eco_score }));
 
   const ecoScore  = report?.avg_eco_score ?? 0;
-  const ecoLabel  = ecoScore >= 8 ? "Excellent 🌟" : ecoScore >= 6 ? "Good 🟢" : ecoScore >= 4 ? "Fair 🟡" : "Needs work 🔴";
-  const ecoColor  = ecoScore >= 8 ? "#15803d" : ecoScore >= 6 ? BRAND_COLORS.green : ecoScore >= 4 ? "#d97706" : "#dc2626";
-  const ringColor = ecoScore >= 6 ? BRAND_COLORS.green : ecoScore >= 4 ? BRAND_COLORS.amber : BRAND_COLORS.red;
+  const ecoLabel  = ecoScore >= ECO_SCORE.excellent ? "Excellent 🌟" : ecoScore >= ECO_SCORE.good ? "Good 🟢" : ecoScore >= ECO_SCORE.fair ? "Fair 🟡" : "Needs work 🔴";
+  const ecoColor  = ecoScore >= ECO_SCORE.excellent ? "#15803d" : ecoScore >= ECO_SCORE.good ? BRAND_COLORS.green : ecoScore >= ECO_SCORE.fair ? "#d97706" : "#dc2626";
+  const ringColor = ecoScore >= ECO_SCORE.good ? BRAND_COLORS.green : ecoScore >= ECO_SCORE.fair ? BRAND_COLORS.amber : BRAND_COLORS.red;
 
   const animatedScore = useCountUp(ecoScore, 1100);
 
   /* animate the ring in once loading finishes */
   useEffect(() => {
     if (!loading && report) {
+      setRingOffset(314); // reset first
       const t = setTimeout(() => {
         setRingOffset(314 - (ecoScore / 10) * 314);
       }, 300);
@@ -174,9 +221,7 @@ export default function SustainabilityPage() {
           <div className="card flex flex-col sm:flex-row items-center gap-8 py-8 animate-slide-up">
             <div className="flex-shrink-0 w-[140px]">
               <svg width="140" height="140" viewBox="0 0 120 120" aria-label={`Eco score: ${ecoScore.toFixed(1)} out of 10`} role="img">
-                {/* track */}
                 <circle cx="60" cy="60" r="50" fill="none" stroke="#f0eeea" strokeWidth="12" />
-                {/* animated fill */}
                 <circle
                   cx="60" cy="60" r="50"
                   fill="none"
@@ -188,14 +233,7 @@ export default function SustainabilityPage() {
                   transform="rotate(-90 60 60)"
                   style={{ transition: "stroke-dashoffset 1.4s cubic-bezier(0.4, 0, 0.2, 1)" }}
                 />
-                {/* animated text */}
-                <text
-                  x="60" y="55"
-                  textAnchor="middle"
-                  fontSize="24"
-                  fontWeight="800"
-                  fill="#1c1a18"
-                >
+                <text x="60" y="55" textAnchor="middle" fontSize="24" fontWeight="800" fill="#1c1a18">
                   {animatedScore.toFixed(1)}
                 </text>
                 <text x="60" y="72" textAnchor="middle" fontSize="11" fill="#9ca3af">/ 10</text>
@@ -271,7 +309,7 @@ export default function SustainabilityPage() {
         </>
       )}
 
-      {/* Charts + table — collapsed */}
+      {/* Charts + sortable table — collapsed */}
       {(topPolluters.length > 0 || ecoScoreData.length > 0 || items.length > 0) && (
         <div className="card animate-slide-up stagger-3">
           <button
@@ -307,42 +345,11 @@ export default function SustainabilityPage() {
               )}
               {items.length > 0 && (
                 <>
-                  <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400">All Items — Environmental Profile</h3>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr style={{ borderBottom: "1.5px solid #e5e0d8" }}>
-                          {["Item", "Category", "Eco Score", "CO₂/unit (g)", "Plastic", "Biodegradable"].map((h) => (
-                            <th key={h} className="text-left py-2 px-3 text-gray-400 font-bold text-xs uppercase tracking-wider">{h}</th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {items.map((it) => (
-                          <tr key={it.item} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
-                            <td className="py-2 px-3 font-medium text-gray-800">{it.item}</td>
-                            <td className="py-2 px-3 text-gray-500">{it.category}</td>
-                            <td className="py-2 px-3">
-                              <span className={`font-bold ${it.eco_score >= 7 ? "text-green-600" : it.eco_score >= 4 ? "text-yellow-600" : "text-red-600"}`}>
-                                {it.eco_score}/10
-                              </span>
-                            </td>
-                            <td className="py-2 px-3 text-gray-600">{it.co2_per_unit_g}</td>
-                            <td className="py-2 px-3">
-                              <span className={it.plastic_packaging ? "text-red-500 font-medium" : "text-green-500 font-medium"}>
-                                {it.plastic_packaging ? "Yes" : "No"}
-                              </span>
-                            </td>
-                            <td className="py-2 px-3">
-                              <span className={it.is_biodegradable ? "text-green-500 font-medium" : "text-red-500 font-medium"}>
-                                {it.is_biodegradable ? "Yes" : "No"}
-                              </span>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                  <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400">
+                    All Items — Environmental Profile
+                    <span className="ml-2 text-gray-300 font-normal normal-case tracking-normal">click any column to sort</span>
+                  </h3>
+                  <ItemsTable items={items} />
                 </>
               )}
             </div>

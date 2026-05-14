@@ -1,11 +1,14 @@
 "use client";
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useRef } from "react";
 import { api, Purchase, WasteAlert, DemandPrediction } from "@/services/api";
 import { BarChartComponent, LineChartComponent } from "@/components/Chart";
 import Table from "@/components/Table";
 import { ShoppingCart, AlertTriangle, TrendingUp, ChevronDown, ChevronUp, Zap, ArrowRight, RefreshCw } from "lucide-react";
 import { CATEGORY_COLORS, RISK_COLORS, BRAND_COLORS } from "@/lib/constants";
 import { useAuth } from "@/contexts/AuthContext";
+import { useFetch } from "@/hooks/useFetch";
+import { useLocalStorage } from "@/hooks/useLocalStorage";
+import { formatRupees } from "@/utils/format";
 import Link from "next/link";
 
 /* ── Animated number that counts from 0 to `to` on mount ── */
@@ -70,7 +73,7 @@ function BudgetBar({ spent, budget }: { spent: number; budget: number }) {
         <span className="text-2xl font-bold text-gray-900">
           ₹<CountUp to={spent} />
         </span>
-        <span className="text-sm text-gray-400">of ₹{budget.toLocaleString()}</span>
+        <span className="text-sm text-gray-400">of {formatRupees(budget)}</span>
       </div>
       <div className="w-full h-2.5 bg-gray-100 rounded-full overflow-hidden">
         <div
@@ -105,32 +108,15 @@ function StatCard({
 
 export default function Dashboard() {
   const { user } = useAuth();
-  const [purchases, setPurchases] = useState<Purchase[]>([]);
-  const [waste,     setWaste]     = useState<WasteAlert[]>([]);
-  const [demand,    setDemand]    = useState<DemandPrediction[]>([]);
-  const [loading,   setLoading]   = useState(true);
-  const [error,     setError]     = useState("");
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError("");
-    try {
-      const [p, w, d] = await Promise.all([
-        api.getPurchases(50),
-        api.predictWaste(),
-        api.predictDemand(),
-      ]);
-      setPurchases(p);
-      setWaste(w.waste_alerts);
-      setDemand(d.predictions);
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Failed to load dashboard data");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const { data, loading, error, refresh: load } = useFetch(
+    () => Promise.all([api.getPurchases(50), api.predictWaste(), api.predictDemand()]),
+    []
+  );
 
-  useEffect(() => { load(); }, [load]);
+  const purchases: Purchase[]         = data?.[0] ?? [];
+  const waste: WasteAlert[]           = data?.[1]?.waste_alerts ?? [];
+  const demand: DemandPrediction[]    = data?.[2]?.predictions ?? [];
 
   /* ── derived stats ── */
   const catSpend: Record<string, number> = {};
@@ -196,7 +182,7 @@ export default function Dashboard() {
     { key: "days_until_expiry", header: "Days Left" },
   ];
 
-  const [chartsOpen, setChartsOpen] = useState(false);
+  const [chartsOpen, setChartsOpen] = useLocalStorage("dashboard_charts_open", false);
 
   /* ── Error state ── */
   if (error) {

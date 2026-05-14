@@ -1,14 +1,18 @@
 import logging
+import os
 import threading
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 
 from app.database.db import create_tables
 from app.services.evaluator import train_all_models
 from app.routes import grocery, prediction, optimization, comparison
 from app.routes import insights, sustainability, auth as auth_routes
+from app.utils.limiter import limiter
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -59,12 +63,18 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+_extra_origins = [o.strip() for o in os.getenv("ALLOWED_ORIGINS", "").split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:3000",
         "http://127.0.0.1:3000",
         "https://smart-grocery-six.vercel.app",
+        *_extra_origins,
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -93,10 +103,18 @@ async def root():
 @app.get("/health", tags=["Health"])
 async def health():
     from app.utils.store import model_store
+    initialized = model_store["initialized"]
+    models = {
+        "demand_linear":  model_store["demand"]["linear"] is not None,
+        "demand_xgboost": model_store["demand"]["xgboost"] is not None,
+        "waste_logistic": model_store["waste"]["logistic"] is not None,
+        "waste_tabnet":   model_store["waste"]["tabnet"] is not None,
+        "anomaly":        model_store["anomaly"]["is_trained"],
+        "recommender":    model_store["recommendation"]["is_trained"],
+        "sustainability": model_store["sustainability"]["is_ready"],
+    }
     return {
-        "status":          "healthy",
-        "models_ready":    model_store["initialized"],
-        "anomaly_trained": model_store["anomaly"]["is_trained"],
-        "recommender_trained": model_store["recommendation"]["is_trained"],
-        "sustainability_ready": model_store["sustainability"]["is_ready"],
+        "status":       "ready" if initialized else "initializing",
+        "models_ready": initialized,
+        "models":       models,
     }

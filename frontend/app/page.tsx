@@ -1,8 +1,12 @@
+"use client";
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   ShoppingCart, TrendingUp, Trash2, IndianRupee,
   AlertCircle, Leaf, ArrowRight, CheckCircle,
 } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
 
 const HOW_IT_WORKS = [
   {
@@ -40,6 +44,16 @@ const INDIA_FACTS = [
 ];
 
 export default function Home() {
+  const { user, isLoading } = useAuth();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!isLoading && user) router.replace("/dashboard");
+  }, [user, isLoading, router]);
+
+  // Show nothing while redirect is in flight for logged-in users
+  if (!isLoading && user) return null;
+
   return (
     <div className="space-y-20">
 

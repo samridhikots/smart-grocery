@@ -1,11 +1,12 @@
 "use client";
-import { useEffect, useState, useCallback, Suspense } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import PurchaseForm from "@/components/Form";
 import Table from "@/components/Table";
 import { api, Purchase } from "@/services/api";
 import { PlusCircle, RefreshCw, CheckCircle, ChevronLeft, ChevronRight, AlertTriangle } from "lucide-react";
 import { CATEGORY_COLORS } from "@/lib/constants";
+import { useFetch } from "@/hooks/useFetch";
 
 const UNLOCK_MILESTONES = [
   { count: 5,  label: "Waste risk predictions appear",  emoji: "🛒" },
@@ -80,29 +81,16 @@ function AddPageInner() {
   const prefillQuantity = searchParams.get("quantity") ?? "";
 
   const PAGE_SIZE = 10;
+  const [page, setPage] = useState(1);
 
-  const [purchases,   setPurchases]   = useState<Purchase[]>([]);
-  const [loading,     setLoading]     = useState(false);
-  const [fetchError,  setFetchError]  = useState("");
-  const [page,        setPage]        = useState(1);
+  const { data, loading, error: fetchError, refresh: fetchPurchases } = useFetch(
+    () => api.getPurchases(200),
+    []
+  );
 
-  const fetchPurchases = useCallback(async () => {
-    setLoading(true);
-    setFetchError("");
-    try {
-      const data = await api.getPurchases(200);
-      setPurchases(data);
-    } catch (e: unknown) {
-      setFetchError(e instanceof Error ? e.message : "Failed to load purchases");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
+  const purchases   = data ?? [];
   const totalPages  = Math.max(1, Math.ceil(purchases.length / PAGE_SIZE));
   const paginated   = purchases.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
-
-  useEffect(() => { fetchPurchases(); }, [fetchPurchases]);
 
   const columns = [
     { key: "purchase_date", header: "Date" },

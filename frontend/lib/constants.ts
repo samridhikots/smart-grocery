@@ -178,3 +178,14 @@ export const BRAND_COLORS = {
   amberDeep:   "#92600a",
   red:         "#ef4444",
 } as const;
+
+export const STORAGE_KEYS = {
+  token: "sg_token",
+  user:  "sg_user",
+} as const;
+
+export const ECO_SCORE = {
+  excellent: 8,
+  good:      6,
+  fair:      4,
+} as const;
