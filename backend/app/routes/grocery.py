@@ -35,15 +35,21 @@ def add_purchase(
     user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ):
-    if purchase.item not in ITEMS or purchase.category not in [
-        "Vegetables", "Fruits", "Dairy", "Grains", "Protein", "Beverages"
-    ]:
+    if purchase.item not in ITEMS:
         raise HTTPException(status_code=400, detail=f"Unknown item: {purchase.item}")
+
+    # Always derive category from catalog — prevents data inconsistency
+    catalog_category = ITEMS[purchase.item]["category"]
+    if purchase.category != catalog_category:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Category mismatch: {purchase.item} belongs to {catalog_category}",
+        )
 
     record = PurchaseRecord(
         user_id=user_id,
         item=purchase.item,
-        category=purchase.category,
+        category=catalog_category,
         quantity=purchase.quantity,
         price=purchase.price,
         purchase_date=purchase.purchase_date.isoformat(),

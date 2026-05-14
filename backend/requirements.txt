@@ -1,21 +1,36 @@
+# Production dependencies — inference only
+# CPU-only torch wheel (~250 MB vs ~2 GB for the full CUDA build)
+--extra-index-url https://download.pytorch.org/whl/cpu
+
+# ── Web framework ──────────────────────────────────────────────
 fastapi==0.109.0
 uvicorn[standard]==0.27.0
-sqlalchemy==2.0.25
-python-jose[cryptography]>=3.3.0
-bcrypt>=4.0.0
-slowapi>=0.1.9
-
-pandas==2.2.2
-numpy==1.26.4
-scipy==1.12.0
-scikit-learn==1.4.2
-
-xgboost==2.0.3
-
-pydantic==2.5.3
 python-multipart==0.0.6
 
-torch>=2.0.0
-pytorch-tabnet>=4.1.0
-mlxtend>=0.23.0
+# ── Auth / security ────────────────────────────────────────────
+python-jose[cryptography]>=3.3.0
+bcrypt>=4.0.0
+
+# ── Database ───────────────────────────────────────────────────
+sqlalchemy==2.0.25
+
+# ── Rate limiting ──────────────────────────────────────────────
+slowapi>=0.1.9
+
+# ── Validation ─────────────────────────────────────────────────
+pydantic==2.5.3
+
+# ── Inference core ─────────────────────────────────────────────
+numpy==1.26.4
+pandas==2.2.2
+scikit-learn==1.4.2
+xgboost==2.0.3
 rapidfuzz>=3.6.0
+
+# ── TabNet inference (CPU-only torch) ──────────────────────────
+torch==2.2.0+cpu
+pytorch-tabnet>=4.1.0
+
+# scipy and mlxtend are NOT included:
+#   scipy  — only used in dataset generation/training, not inference
+#   mlxtend — fpgrowth_model.py gracefully degrades when absent

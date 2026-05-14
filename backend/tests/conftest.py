@@ -7,7 +7,8 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from unittest.mock import MagicMock
+from sqlalchemy.pool import StaticPool
+from unittest.mock import MagicMock, patch
 
 from app.database.db import Base, get_db
 from app.utils.store import model_store
@@ -15,8 +16,15 @@ from app.utils.store import model_store
 
 # ── in-memory test database ─────────────────────────────────────────────────
 
+# StaticPool forces all connections to reuse one underlying connection, so
+# tables created by create_all() are visible to subsequent sessions.
+
 TEST_DB_URL = "sqlite:///:memory:"
-test_engine = create_engine(TEST_DB_URL, connect_args={"check_same_thread": False})
+test_engine = create_engine(
+    TEST_DB_URL,
+    connect_args={"check_same_thread": False},
+    poolclass=StaticPool,
+)
 TestSession = sessionmaker(autocommit=False, autoflush=False, bind=test_engine)
 
 
@@ -42,6 +50,24 @@ _mock_model = MagicMock()
 _mock_model.predict.return_value = [1.0]
 _mock_model.predict_proba.return_value = [0.2]
 _mock_model.is_trained = True
+
+@pytest.fixture(autouse=True)
+def no_background_init():
+    """Prevent the lifespan background thread from training models during tests.
+    Without this the thread races with stub_model_store and overwrites its patches."""
+    with patch("app.main._background_init"):
+        yield
+
+
+@pytest.fixture(autouse=True)
+def disable_rate_limit():
+    """Turn off slowapi counting so tests don't throttle each other."""
+    from app.utils.limiter import limiter
+    limiter.enabled = False
+    yield
+    limiter.enabled = True
+    limiter.reset()  # clear accumulated counts
+
 
 @pytest.fixture(autouse=True)
 def stub_model_store():
