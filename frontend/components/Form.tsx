@@ -1,7 +1,8 @@
 "use client";
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useId } from "react";
 import { api } from "@/services/api";
 import { ITEMS_BY_CATEGORY, CATEGORY_COLORS } from "@/lib/constants";
+import { useToast } from "@/contexts/ToastContext";
 import { Search } from "lucide-react";
 
 interface FormState {
@@ -37,10 +38,13 @@ export default function PurchaseForm({
   const [form, setForm] = useState<FormState>({ ...INIT, quantity: prefillQuantity });
   const [query, setQuery] = useState(prefillItem);
   const [open, setOpen] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(-1);
   const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [formError, setFormError] = useState("");
+  const { showToast } = useToast();
   const inputRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const listboxId = useId();
 
   // Auto-select item when prefilled from Shopping List
   useEffect(() => {
@@ -76,17 +80,35 @@ export default function PurchaseForm({
     setForm((prev) => ({ ...prev, item: entry.item, category: entry.category }));
     setQuery(entry.item);
     setOpen(false);
-    inputRef.current?.blur();
+    setActiveIndex(-1);
+    inputRef.current?.focus();
   }
 
   function handleQueryChange(e: React.ChangeEvent<HTMLInputElement>) {
     const val = e.target.value;
     setQuery(val);
-    // Clear item selection if user edits text after selecting
+    setActiveIndex(-1);
     if (val !== form.item) {
       setForm((prev) => ({ ...prev, item: "", category: "" }));
     }
     setOpen(true);
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (!open || filtered.length === 0) return;
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setActiveIndex((i) => (i + 1) % filtered.length);
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setActiveIndex((i) => (i <= 0 ? filtered.length - 1 : i - 1));
+    } else if (e.key === "Enter" && activeIndex >= 0) {
+      e.preventDefault();
+      selectItem(filtered[activeIndex]);
+    } else if (e.key === "Escape") {
+      setOpen(false);
+      setActiveIndex(-1);
+    }
   }
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -97,11 +119,11 @@ export default function PurchaseForm({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.item || !form.category || !form.quantity || !form.price) {
-      setMessage({ type: "error", text: "Please select an item and fill in all required fields." });
+      setFormError("Please select an item and fill in all required fields.");
       return;
     }
     setLoading(true);
-    setMessage(null);
+    setFormError("");
     try {
       await api.addPurchase({
         item: form.item,
@@ -110,13 +132,12 @@ export default function PurchaseForm({
         price: parseFloat(form.price),
         purchase_date: form.purchase_date,
       });
-      setMessage({ type: "success", text: `Added ${form.quantity} × ${form.item} to your purchases!` });
+      showToast(`Added ${form.item} to your purchases!`);
       setForm(INIT);
       setQuery("");
       onSuccess?.();
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Failed to add purchase";
-      setMessage({ type: "error", text: msg });
+      setFormError(err instanceof Error ? err.message : "Failed to add purchase");
     } finally {
       setLoading(false);
     }
@@ -124,15 +145,9 @@ export default function PurchaseForm({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
-      {message && (
-        <div
-          className={`px-4 py-3 rounded-lg text-sm font-medium ${
-            message.type === "success"
-              ? "bg-green-50 text-green-700 border border-green-200"
-              : "bg-red-50 text-red-700 border border-red-200"
-          }`}
-        >
-          {message.text}
+      {formError && (
+        <div className="px-4 py-3 rounded-lg text-sm font-medium bg-red-50 text-red-700 border border-red-200">
+          {formError}
         </div>
       )}
 
@@ -150,9 +165,15 @@ export default function PurchaseForm({
               value={query}
               onChange={handleQueryChange}
               onFocus={() => query.length > 0 && setOpen(true)}
+              onKeyDown={handleKeyDown}
               placeholder="Type to search — e.g. Tomato, Milk, Atta…"
               className="w-full border border-gray-300 rounded-lg pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
               autoComplete="off"
+              role="combobox"
+              aria-expanded={open && filtered.length > 0}
+              aria-autocomplete="list"
+              aria-controls={listboxId}
+              aria-activedescendant={activeIndex >= 0 ? `autocomplete-option-${activeIndex}` : undefined}
             />
             {form.category && (
               <span
@@ -166,14 +187,22 @@ export default function PurchaseForm({
             {open && filtered.length > 0 && (
               <div
                 ref={dropdownRef}
+                id={listboxId}
+                role="listbox"
+                aria-label="Item suggestions"
                 className="absolute z-20 mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden"
               >
-                {filtered.map(({ item, category }) => (
+                {filtered.map(({ item, category }, idx) => (
                   <button
                     key={`${category}-${item}`}
+                    id={`autocomplete-option-${idx}`}
                     type="button"
-                    onMouseDown={() => selectItem({ item, category })}
-                    className="flex items-center justify-between w-full px-4 py-2.5 text-sm text-left hover:bg-green-50 transition-colors"
+                    role="option"
+                    aria-selected={idx === activeIndex}
+                    onClick={() => selectItem({ item, category })}
+                    className={`flex items-center justify-between w-full px-4 py-2.5 text-sm text-left transition-colors ${
+                      idx === activeIndex ? "bg-green-50" : "hover:bg-green-50"
+                    }`}
                   >
                     <span className="font-medium text-gray-800">{item}</span>
                     <span
@@ -220,7 +249,7 @@ export default function PurchaseForm({
         </div>
       </div>
 
-      <button type="submit" disabled={loading} className="btn-primary w-full disabled:opacity-60 disabled:cursor-not-allowed">
+      <button type="submit" disabled={loading} className="btn-primary disabled:opacity-60 disabled:cursor-not-allowed px-8 py-3">
         {loading ? "Adding…" : "Add Purchase"}
       </button>
     </form>

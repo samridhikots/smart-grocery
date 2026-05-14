@@ -5,15 +5,21 @@ human-readable insights for Indian household users.
 /api/recommendations — FP-Growth item recommendations for a given basket.
 /api/overspending    — Isolation Forest overspending detection.
 """
+import logging
 from datetime import datetime
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
+from sqlalchemy.orm import Session
 
-from app.utils.store import model_store
-from app.utils.auth import get_current_user_id
+from app.database.db import get_db
 from app.datasets.loader import load_grocery_purchases
+from app.services.user_stats import get_user_item_stats
+from app.utils.auth import get_current_user_id
+from app.utils.store import model_store
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -23,7 +29,10 @@ router = APIRouter()
 # ---------------------------------------------------------------------------
 
 @router.get("/insights")
-def get_insights(user_id: int = Depends(get_current_user_id)):
+def get_insights(
+    user_id: int = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
     """
     Returns a prioritised list of actionable insights for the user:
       - Shortage alerts (demand model)
@@ -39,7 +48,7 @@ def get_insights(user_id: int = Depends(get_current_user_id)):
     now = datetime.now()
 
     # --- 1. Demand: shortage alerts ---
-    item_stats = model_store["item_stats"]
+    item_stats = get_user_item_stats(user_id, db, model_store["item_stats"])
     scaler     = model_store["demand"]["scaler"]
     xgb_model  = model_store["demand"]["xgboost"]
 
@@ -141,8 +150,8 @@ def get_insights(user_id: int = Depends(get_current_user_id)):
                     "priority": 2,
                     "data":     result,
                 })
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("[insights] overspending check failed for user %d: %s", user_id, exc)
 
     # --- 4. Recommendations ---
     recommender = model_store["recommendation"].get("model")
@@ -185,8 +194,8 @@ def get_insights(user_id: int = Depends(get_current_user_id)):
                         "action":   "eco_tips",
                         "priority": 6,
                     })
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning("[insights] sustainability check failed for user %d: %s", user_id, exc)
 
     # Sort by priority (1 = most urgent)
     insights.sort(key=lambda x: (x["priority"], x["severity"] != "critical"))

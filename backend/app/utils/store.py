@@ -1,4 +1,10 @@
 """Global model registry shared across all routes."""
+import threading
+
+# Written once by the background training thread; read by request handlers.
+# _init_lock ensures all model_store keys are visible to other threads
+# before `initialized` is set to True.
+_init_lock = threading.Lock()
 
 model_store = {
     "demand": {
@@ -41,3 +47,9 @@ model_store = {
     "item_stats": {},
     "initialized": False,
 }
+
+
+def mark_initialized() -> None:
+    """Acquire the lock, then flip the flag — guarantees all prior writes are visible."""
+    with _init_lock:
+        model_store["initialized"] = True

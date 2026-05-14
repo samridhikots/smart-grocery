@@ -30,8 +30,9 @@ from app.utils.helpers import FESTIVAL_MONTHS, MONSOON_MONTHS, SUMMER_MONTHS
 # Demand features (13)
 # ---------------------------------------------------------------------------
 
-def build_demand_features() -> Tuple[pd.DataFrame, pd.Series]:
-    data = load_all()
+def build_demand_features(data: dict = None) -> Tuple[pd.DataFrame, pd.Series]:
+    if data is None:
+        data = load_all()
     purchases = data["purchases"].copy()
     metadata  = data["metadata"]
     household = data["household"]
@@ -178,8 +179,9 @@ def build_demand_features() -> Tuple[pd.DataFrame, pd.Series]:
 # Waste features (24)
 # ---------------------------------------------------------------------------
 
-def build_waste_features() -> Tuple[pd.DataFrame, pd.Series]:
-    data = load_all()
+def build_waste_features(data: dict = None) -> Tuple[pd.DataFrame, pd.Series]:
+    if data is None:
+        data = load_all()
     waste    = data["waste"].copy()
     metadata = data["metadata"]
 
@@ -301,7 +303,7 @@ def build_waste_features() -> Tuple[pd.DataFrame, pd.Series]:
 # Per-item stats for inference
 # ---------------------------------------------------------------------------
 
-def compute_item_stats(purchases: pd.DataFrame, metadata: pd.DataFrame, seasonal: pd.DataFrame) -> dict:
+def compute_item_stats(purchases: pd.DataFrame, metadata: pd.DataFrame, seasonal: pd.DataFrame, household_size: float = 3.0) -> dict:
     current_month = pd.Timestamp.now().month
     seasonal_row  = seasonal.loc[seasonal["month"] == current_month]
     seasonal_now  = seasonal_row.iloc[0] if not seasonal_row.empty else seasonal.iloc[0]
@@ -332,7 +334,7 @@ def compute_item_stats(purchases: pd.DataFrame, metadata: pd.DataFrame, seasonal
             "days_since_last":       7.0,
             "purchase_frequency":    round(freq, 3),
             "seasonal_factor":       float(seasonal_now.get("demand_multiplier", 1.0)),
-            "household_size":        3.0,
+            "household_size":        household_size,
             "consumption_rate":      round(avg_qty * 0.8, 3),
             "price":                 round(avg_price, 2),
             "category":              item_df["category"].iloc[0],

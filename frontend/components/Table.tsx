@@ -44,7 +44,7 @@ export default function Table<T extends Record<string, unknown>>({
             </tr>
           ) : (
             data.map((row, i) => (
-              <tr key={i} className="hover:bg-gray-50 transition-colors">
+              <tr key={(row.id as string | number | undefined) ?? i} className="hover:bg-gray-50 transition-colors">
                 {columns.map((col) => (
                   <td
                     key={String(col.key)}

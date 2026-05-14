@@ -1,6 +1,7 @@
 "use client";
 import { createContext, useContext, useState, useEffect, useCallback } from "react";
 import { authApi, User } from "@/services/api";
+import { STORAGE_KEYS } from "@/lib/constants";
 
 interface AuthContextType {
   user: User | null;
@@ -23,22 +24,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const token = localStorage.getItem("sg_token");
-    const stored = localStorage.getItem("sg_user");
-    if (token && stored) {
-      try {
-        setUser(JSON.parse(stored));
-      } catch {
-        localStorage.removeItem("sg_token");
-        localStorage.removeItem("sg_user");
-      }
+    const token = localStorage.getItem(STORAGE_KEYS.token);
+    if (!token) {
+      setIsLoading(false);
+      return;
     }
-    setIsLoading(false);
+    // Validate token with the server; update user from latest server data
+    authApi.me()
+      .then((serverUser) => {
+        localStorage.setItem(STORAGE_KEYS.user, JSON.stringify(serverUser));
+        setUser(serverUser);
+      })
+      .catch(() => {
+        // Token expired or revoked — clear session
+        localStorage.removeItem(STORAGE_KEYS.token);
+        localStorage.removeItem(STORAGE_KEYS.user);
+      })
+      .finally(() => setIsLoading(false));
   }, []);
 
   const saveSession = (token: string, newUser: User) => {
-    localStorage.setItem("sg_token", token);
-    localStorage.setItem("sg_user", JSON.stringify(newUser));
+    localStorage.setItem(STORAGE_KEYS.token, token);
+    localStorage.setItem(STORAGE_KEYS.user, JSON.stringify(newUser));
     setUser(newUser);
   };
 
@@ -53,22 +60,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const logout = useCallback(() => {
-    localStorage.removeItem("sg_token");
-    localStorage.removeItem("sg_user");
+    localStorage.removeItem(STORAGE_KEYS.token);
+    localStorage.removeItem(STORAGE_KEYS.user);
     setUser(null);
   }, []);
 
   const completeOnboarding = useCallback(
     async (data: { household_size: number; monthly_budget: number; dietary_prefs: string }) => {
       const updated = await authApi.onboarding(data);
-      localStorage.setItem("sg_user", JSON.stringify(updated));
+      localStorage.setItem(STORAGE_KEYS.user, JSON.stringify(updated));
       setUser(updated);
     },
     []
   );
 
   const updateUser = useCallback((newUser: User) => {
-    localStorage.setItem("sg_user", JSON.stringify(newUser));
+    localStorage.setItem(STORAGE_KEYS.user, JSON.stringify(newUser));
     setUser(newUser);
   }, []);
 

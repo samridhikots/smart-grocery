@@ -1,7 +1,8 @@
 "use client";
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Users, IndianRupee, Leaf, ChevronRight, Loader2 } from "lucide-react";
+import { useFocusTrap } from "@/hooks/useFocusTrap";
 
 const DIETARY_OPTIONS = [
   { value: "vegetarian", label: "Vegetarian" },
@@ -19,8 +20,12 @@ export default function OnboardingModal() {
   const [dietary, setDietary] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const isVisible = !!(user && !user.onboarding_complete);
 
-  if (!user || user.onboarding_complete) return null;
+  useFocusTrap(dialogRef, isVisible);
+
+  if (!isVisible) return null;
 
   const toggleDietary = (val: string) =>
     setDietary((prev) => (prev.includes(val) ? prev.filter((v) => v !== val) : [...prev, val]));
@@ -41,11 +46,17 @@ export default function OnboardingModal() {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden">
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" aria-hidden="true">
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="onboarding-title"
+        className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden"
+      >
         {/* Header */}
         <div className="bg-gradient-to-r from-green-600 to-emerald-500 px-6 py-5 text-white">
-          <h2 className="text-xl font-bold">Welcome, {user.name.split(" ")[0]}!</h2>
+          <h2 id="onboarding-title" className="text-xl font-bold">Welcome, {user.name.split(" ")[0]}!</h2>
           <p className="text-green-100 text-sm mt-0.5">
             Set up your household in 3 quick steps
           </p>
