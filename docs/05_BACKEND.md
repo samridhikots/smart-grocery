@@ -73,7 +73,7 @@ async def lifespan(app: FastAPI):
     # STARTUP (runs once when server starts)
     create_tables()           # SQLite schema creation
     generate_all_datasets()   # Write 6 CSVs if not present
-    train_all_models()        # Train 4 ML models, populate model_store
+    train_all_models()        # Train 7 models (4 supervised + IF + FP-Growth + Sustainability), populate model_store
     yield
     # SHUTDOWN (cleanup if needed)
 ```
@@ -232,12 +232,12 @@ def load_all() -> dict:
 Contains two major pipeline functions:
 
 **`build_demand_features()`**
-- Loads 4 datasets, joins them, engineers 10 features
+- Loads 6 datasets, joins them, engineers 13 features (10 base + 3 Indian-context: `price_variation_index`, `is_summer_month`, `is_monsoon_month`)
 - Creates rolling window features using pandas GroupBy
 - Returns `(X_demand: DataFrame, y_demand: Series)`
 
 **`build_waste_features()`**
-- Loads waste + metadata, engineers 10 features
+- Loads waste + metadata, engineers 24 features (10 base + 10 engineered + 4 Indian-context: `is_summer_month`, `is_monsoon_month`, `monsoon_perishable_flag`, `price_variation_index`)
 - Returns `(X_waste: DataFrame, y_waste: Series)`
 
 **`compute_item_stats()`**

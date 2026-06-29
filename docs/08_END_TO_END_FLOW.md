@@ -134,13 +134,13 @@ User runs: uvicorn app.main:app --reload --port 8000
           │  1. build_demand_features()              │
           │     Load: purchases + household +        │
           │           seasonal + metadata            │
-          │     Engineer: 10 features                │
-          │     Output: X(≈6000×10), y(≈6000)        │
+          │     Engineer: 13 features                │
+          │     Output: X(≈200k×13), y(≈200k)        │
           │                                          │
           │  2. build_waste_features()               │
           │     Load: food_waste + metadata          │
-          │     Engineer: 10 features                │
-          │     Output: X(1200×10), y(1200)          │
+          │     Engineer: 24 features                │
+          │     Output: X(120k×24), y(120k)          │
           │                                          │
           │  3. Train/test split (80/20)             │
           │     + StandardScaler (fit on train only) │
@@ -148,17 +148,20 @@ User runs: uvicorn app.main:app --reload --port 8000
           │  4. Train Ridge Regression  < 100ms      │
           │  5. Train XGBoost           ~5–8s        │
           │  6. Train Logistic Reg      < 100ms      │
-          │  7. Train Random Forest     ~2–4s        │
+          │  7. Train TabNet            ~3–8min       │
+          │  8. Train Isolation Forest  < 2s         │
+          │  9. Train FP-Growth         ~5–15s       │
+          │ 10. Build Sustainability tracker         │
           │                                          │
-          │  8. Evaluate all 4 on test sets          │
-          │  9. compute_item_stats() → item_stats    │
-          │ 10. model_store["initialized"] = True    │
+          │ 11. Evaluate supervised models on test   │
+          │ 12. compute_item_stats() → item_stats    │
+          │ 13. model_store["initialized"] = True    │
           └──────────┬───────────────────────────────┘
                      │
                      ▼
-          INFO: System ready.
+          INFO: All 7 models ready.
           INFO: Uvicorn running on http://127.0.0.1:8000
-          (Total startup: ~12–18 seconds)
+          (Cold startup: ~10–15 min | Cached: < 5s)
 ```
 
 ---

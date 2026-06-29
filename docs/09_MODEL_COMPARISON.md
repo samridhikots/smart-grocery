@@ -190,31 +190,37 @@ Feature importance = average gain per split, normalized to sum to 1.0.
 | 6 | `purchase_frequency` | ~0.04 | Frequency provides context for quantity |
 | 7 | `days_since_last` | ~0.03 | Recency has minor additional signal |
 | 8 | `expiry_risk_proxy` | ~0.02 | Buying pattern of perishables vs staples |
-| 9 | `is_festival_month` | ~0.01 | Small but real festival boost |
-| 10 | `category_encoded` | ~0.01 | Minimal residual categorical effect |
+| 9 | `price_variation_index` | ~0.01 | Retail vs mandi price deviation |
+| 10 | `is_monsoon_month` | ~0.01 | Monsoon buying-pattern adjustment |
+| 11 | `is_summer_month` | ~0.01 | Summer heat demand adjustment |
+| 12 | `is_festival_month` | ~0.01 | Small but real festival boost |
+| 13 | `category_encoded` | ~0.00 | Minimal residual categorical effect |
 
-**Key insight:** The top 3 features (`avg_quantity_last3`, `consumption_rate`, `household_size`) account for ~75% of predictive power. The remaining 7 features provide the remaining 25%.
+**Key insight:** The top 3 features (`avg_quantity_last3`, `consumption_rate`, `household_size`) account for ~75% of predictive power. The remaining 10 features provide the remaining 25%, with the 3 new Indian-context features (#9–12) adding seasonal signal for perishables.
 
 ```
-Feature Importance (XGBoost Demand)
-─────────────────────────────────────────
-avg_quantity_last3  ████████████████████████████████████████████ 45%
-consumption_rate    ██████████████████ 18%
-household_size      ████████████ 12%
-seasonal_factor     ████████ 8%
-price               ██████ 6%
-purchase_frequency  ████ 4%
-days_since_last     ███ 3%
-expiry_risk_proxy   ██ 2%
-is_festival_month   █ 1%
-category_encoded    █ 1%
+Feature Importance (XGBoost Demand — 13 features)
+────────────────────────────────────────────────────
+avg_quantity_last3    ████████████████████████████████████████████ 45%
+consumption_rate      ██████████████████ 18%
+household_size        ████████████ 12%
+seasonal_factor       ████████ 8%
+price                 ██████ 6%
+purchase_frequency    ████ 4%
+days_since_last       ███ 3%
+expiry_risk_proxy     ██ 2%
+price_variation_index █ 1%
+is_monsoon_month      █ 1%
+is_summer_month       █ 1%
+is_festival_month     █ 1%
+category_encoded      · 0%
 ```
 
 ---
 
 ### TabNet Waste Model — Feature Importance (Attention Weights)
 
-TabNet derives `feature_importances_` from aggregated attention masks across `n_steps=5` decision steps. Each step attends to a sparse subset of the 20 input features.
+TabNet derives `feature_importances_` from aggregated attention masks across `n_steps=5` decision steps. Each step attends to a sparse subset of the 24 input features.
 
 | Rank | Feature | Attention Weight | What It Tells Us |
 |------|---------|-----------------|-----------------|
@@ -232,14 +238,18 @@ TabNet derives `feature_importances_` from aggregated attention masks across `n_
 | 12 | `price_sensitivity_score` | ~0.03 | Price × perishability interaction |
 | 13 | `price_per_unit` | ~0.03 | Cost per unit |
 | 14 | `seasonal_waste_factor` | ~0.02 | Ultra-perishable threshold |
-| 15 | `is_perishable` | ~0.02 | Binary perishability |
-| 16 | `quantity` | ~0.02 | Raw quantity |
-| 17 | `price` | ~0.01 | Price (captured more by price_sensitivity_score) |
-| 18 | `nutrition_score` | ~0.01 | Nutritious items consumed first |
-| 19 | `household_size_proxy` | ~0.01 | Larger households reduce waste |
-| 20 | `category_encoded` | ~0.00 | Captured by category_risk_avg |
+| 15 | `monsoon_perishable_flag` | ~0.02 | Monsoon × perishable compound risk |
+| 16 | `is_perishable` | ~0.02 | Binary perishability |
+| 17 | `quantity` | ~0.02 | Raw quantity |
+| 18 | `is_monsoon_month` | ~0.01 | Monsoon humidity baseline |
+| 19 | `is_summer_month` | ~0.01 | Summer heat baseline |
+| 20 | `price_variation_index` | ~0.01 | Mandi price deviation |
+| 21 | `price` | ~0.01 | Raw price |
+| 22 | `nutrition_score` | ~0.01 | Nutritious items consumed first |
+| 23 | `household_size_proxy` | ~0.01 | Larger households reduce waste |
+| 24 | `category_encoded` | ~0.00 | Captured by category_risk_avg |
 
-**Key insight:** The top 5 features account for ~54% of attention weight. The engineered interaction features (`waste_risk_interaction`, `consumption_to_expiry_ratio`, `category_risk_avg`, `rolling_waste_rate`) appear in the top 7, validating the feature engineering approach.
+**Key insight:** The top 5 features account for ~54% of attention weight. The four new Indian-context features (`is_monsoon_month`, `is_summer_month`, `monsoon_perishable_flag`, `price_variation_index`) rank in the lower half but provide meaningful seasonal signal that improves recall on perishables during monsoon months.
 
 ---
 
@@ -268,9 +278,9 @@ This result has significant academic value. In the real world, this exact phenom
 ### Why TabNet Outperforms Logistic Regression on Waste
 
 With 120,000 waste records:
-- The waste probability still follows `0.6 × expiry_risk + 0.4 × (1 - consumption_rate)` at its core, but the 10 engineered features introduce non-linear interactions (e.g., `waste_risk_interaction = expiry_risk × (1 - consumption_rate)`) that TabNet's attention mechanism exploits
+- The waste probability still follows `0.6 × expiry_risk + 0.4 × (1 - consumption_rate)` at its core, but the 14 additional engineered and Indian-context features introduce non-linear interactions (e.g., `waste_risk_interaction = expiry_risk × (1 - consumption_rate)`, `monsoon_perishable_flag`) that TabNet's attention mechanism exploits
 - With 120k samples, TabNet's deep learning capacity is fully leveraged — data starvation is no longer a concern
-- The expanded 20-feature space provides richer interaction candidates for attention to select from
+- The expanded 24-feature space provides richer interaction candidates for attention to select from
 - TabNet's sequential attention steps can discover compound rules that linear models fundamentally cannot represent
 
 ---
@@ -355,7 +365,7 @@ While legacy models win on this synthetic dataset, modern models (XGBoost, Rando
 2. **Category + item-level history:** "category_risk_avg and rolling_waste_rate together encode a prior that TabNet can attend to strongly when other signals are ambiguous"
 3. **Large dataset available:** "With 120k records, TabNet has enough samples to reliably learn sparse attention patterns"
 4. **Non-linear perishability thresholds:** "shelf_life < 7 days creates a threshold effect; TabNet's entmax attention creates sharp selection boundaries"
-5. **Feature interaction discovery:** "The 20-feature space has 190 pairwise interactions — TabNet explores these systematically across 5 attention steps"
+5. **Feature interaction discovery:** "The 24-feature space has 276 pairwise interactions — TabNet explores these systematically across 5 attention steps, including Indian-context cross-features like `monsoon_perishable_flag`"
 
 ---
 
@@ -389,7 +399,7 @@ Is inference speed critical (< 5ms)?
 
 **Production recommendation:**
 - **Demand:** Deploy both. Use XGBoost for items with complex seasonal patterns (Mango, Grapes, seasonal vegetables). Use Linear Regression for stable staples (Rice, Lentils, Oil).
-- **Waste:** TabNet as primary waste model (benefits from 120k rows + 20 features); Logistic Regression as fast fallback if TabNet unavailable at startup.
+- **Waste:** TabNet as primary waste model (benefits from 120k rows + 24 features); Logistic Regression as fast fallback if TabNet unavailable at startup.
 
 ---
 

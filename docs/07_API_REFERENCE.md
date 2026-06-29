@@ -103,8 +103,9 @@ Returns basic API information.
 **Response:**
 ```json
 {
-  "message": "Smart Grocery Management System",
-  "version": "1.0.0",
+  "message": "Smart Grocery Management System — India",
+  "version": "2.0.0",
+  "models": ["Ridge", "XGBoost", "Logistic", "TabNet", "IsolationForest", "FP-Growth", "Sustainability"],
   "docs": "/docs"
 }
 ```
@@ -118,12 +119,21 @@ Returns server health and model readiness status.
 **Response:**
 ```json
 {
-  "status": "healthy",
-  "models_ready": true
+  "status": "ready",
+  "models_ready": true,
+  "models": {
+    "demand_linear":  true,
+    "demand_xgboost": true,
+    "waste_logistic": true,
+    "waste_tabnet":   true,
+    "anomaly":        true,
+    "recommender":    true,
+    "sustainability": true
+  }
 }
 ```
 
-> **Note:** `models_ready` will be `false` during the startup training phase (~15 seconds). Prediction/optimization endpoints return `503` until this becomes `true`.
+> **Note:** `status` is `"initializing"` and `models_ready` is `false` while training runs in the background. All prediction/optimization endpoints return `503` until `models_ready` is `true`. Training can take up to ~15 minutes on cold start; cached runs (datasets unchanged) complete in under 5 seconds.
 
 ---
 
@@ -271,32 +281,41 @@ Get demand predictions for all catalog items using both models.
 {
   "predictions": [
     {
+      "item": "Spinach",
+      "category": "Vegetables",
+      "brand": "Local",
+      "predicted_quantity_xgboost": 0.48,
+      "predicted_quantity_linear": 0.51,
+      "historical_avg": 0.50,
+      "confidence": 0.79,
+      "recommended_quantity": 0.48,
+      "unit_price_inr": 30.0,
+      "estimated_cost_inr": 14.4,
+      "days_until_next": 3,
+      "seasonal_factor": 1.0,
+      "is_festival_month": 0,
+      "urgency_message": "Buy in 3 days."
+    },
+    {
       "item": "Milk",
       "category": "Dairy",
+      "brand": "Amul",
       "predicted_quantity_xgboost": 2.41,
       "predicted_quantity_linear": 2.38,
       "historical_avg": 2.31,
-      "confidence": 0.92,
+      "confidence": 0.82,
       "recommended_quantity": 2.41,
-      "unit_price": 2.5,
-      "days_until_next": 8,
-      "seasonal_factor": 1.02
-    },
-    {
-      "item": "Tomato",
-      "category": "Vegetables",
-      "predicted_quantity_xgboost": 3.29,
-      "predicted_quantity_linear": 3.31,
-      "historical_avg": 2.31,
-      "confidence": 0.85,
-      "recommended_quantity": 3.29,
-      "unit_price": 2.5,
-      "days_until_next": 8,
-      "seasonal_factor": 1.02
+      "unit_price_inr": 60.0,
+      "estimated_cost_inr": 144.6,
+      "days_until_next": 7,
+      "seasonal_factor": 1.02,
+      "is_festival_month": 0,
+      "urgency_message": "Next purchase in ~7 days."
     }
   ],
-  "model_used": "XGBoost (modern)",
-  "total_items": 30
+  "model_used": "XGBoost (primary)",
+  "total_items": 30,
+  "currency": "INR"
 }
 ```
 
@@ -304,16 +323,19 @@ Get demand predictions for all catalog items using both models.
 
 | Field | Description |
 |-------|-------------|
-| `predicted_quantity_xgboost` | XGBoost model prediction |
-| `predicted_quantity_linear` | Ridge Linear Regression prediction |
-| `historical_avg` | Mean quantity from training data |
-| `confidence` | Model confidence score (0.0–1.0) |
-| `recommended_quantity` | Use this value — XGBoost prediction |
-| `unit_price` | Average price per unit ($) |
-| `days_until_next` | Estimated days until next purchase needed |
-| `seasonal_factor` | Current month demand multiplier |
+| `predicted_quantity_xgboost` | XGBoost model prediction (primary) |
+| `predicted_quantity_linear` | Ridge Linear Regression prediction (baseline) |
+| `historical_avg` | Rolling mean quantity from recent purchases |
+| `confidence` | Model confidence score (0.0–1.0), derived from test R² |
+| `recommended_quantity` | Same as `predicted_quantity_xgboost` |
+| `unit_price_inr` | Average price per unit in ₹ |
+| `estimated_cost_inr` | `recommended_quantity × unit_price_inr` |
+| `days_until_next` | `30 / purchase_frequency` — estimated days to next needed purchase |
+| `seasonal_factor` | Current month demand multiplier from seasonal dataset |
+| `is_festival_month` | 1 if current month is a festival month |
+| `urgency_message` | Human-readable buy-now guidance |
 
-Results are sorted by `confidence` descending. Returns 30 items.
+Results are sorted by `days_until_next` ascending (most urgent first). Requires Bearer token.
 
 **Error: 503**
 ```json
@@ -334,35 +356,42 @@ Get waste risk predictions for all items using both models.
     {
       "item": "Spinach",
       "category": "Vegetables",
+      "brand": "Local",
       "waste_probability_tabnet": 0.741,
       "waste_probability_logistic": 0.683,
       "risk_level": "High",
       "days_until_expiry": 2,
-      "recommendation": "Use Spinach within 2 days — high spoilage risk!",
-      "shelf_life": 5
+      "shelf_life_days": 5,
+      "recommendation": "Use Spinach within 2 days — high spoilage risk! Monsoon humidity increases risk — check daily.",
+      "is_perishable": 1
     },
     {
       "item": "Chicken",
       "category": "Protein",
+      "brand": "Local",
       "waste_probability_tabnet": 0.632,
       "waste_probability_logistic": 0.594,
       "risk_level": "High",
       "days_until_expiry": 1,
+      "shelf_life_days": 3,
       "recommendation": "Use Chicken within 1 days — high spoilage risk!",
-      "shelf_life": 3
+      "is_perishable": 1
     },
     {
       "item": "Rice",
       "category": "Grains",
+      "brand": "Aashirvaad",
       "waste_probability_tabnet": 0.072,
       "waste_probability_logistic": 0.091,
       "risk_level": "Low",
       "days_until_expiry": 255,
-      "recommendation": "Rice has low waste risk, normal usage is fine.",
-      "shelf_life": 365
+      "shelf_life_days": 365,
+      "recommendation": "Rice has low waste risk. Normal usage is fine.",
+      "is_perishable": 0
     }
   ],
-  "high_risk_count": 7
+  "high_risk_count": 7,
+  "medium_risk_count": 4
 }
 ```
 
@@ -536,17 +565,33 @@ Detect whether the current month's spend is anomalous using IsolationForest. **R
 **Response: 200 OK**
 ```json
 {
-  "is_anomaly": true,
+  "is_overspending": true,
+  "anomaly_score": -0.0823,
   "monthly_spend": 4200.0,
-  "avg_3month": 3100.0,
-  "overspend_amount": 1100.0,
-  "message": "Your spend this month is significantly above your 3-month average.",
-  "history": [
-    { "month": "Jan", "spend": 3050, "is_anomaly": false },
-    { "month": "Feb", "spend": 4200, "is_anomaly": true }
-  ]
+  "rolling_avg_3m": 3100.0,
+  "overspent_by": 1100.0,
+  "n_unique_items": 21,
+  "category_breakdown": {
+    "Vegetables": 820.0,
+    "Dairy": 630.0,
+    "Grains": 450.0
+  },
+  "message": "You overspent ₹1100 vs your 3-month average."
 }
 ```
+
+| Field | Description |
+|-------|-------------|
+| `is_overspending` | `true` if Isolation Forest labels this month as anomalous |
+| `anomaly_score` | Raw IF score — negative = anomalous, positive = normal |
+| `monthly_spend` | Total ₹ spent this month |
+| `rolling_avg_3m` | 3-month rolling average spend |
+| `overspent_by` | `max(0, monthly_spend - rolling_avg_3m)` |
+| `n_unique_items` | Number of distinct items purchased this month |
+| `category_breakdown` | Per-category spend (₹) for this month |
+| `message` | Human-readable verdict |
+
+Returns `"Not enough purchase history to detect overspending."` in `message` if no current-month data exists.
 
 ---
 
@@ -606,11 +651,18 @@ Return full model comparison metrics, winners, and feature importance.
     "improvement": {
       "mae_reduction": -0.0278,
       "r2_gain": -0.0482
-    }
+    },
+    "features_count": 13,
+    "feature_names": ["avg_quantity_last3", "days_since_last", "purchase_frequency",
+                      "seasonal_factor", "household_size", "consumption_rate",
+                      "price", "category_encoded", "expiry_risk_proxy",
+                      "is_festival_month", "price_variation_index",
+                      "is_summer_month", "is_monsoon_month"]
   },
   "waste_prediction": {
     "task": "Classification — predict if item will be wasted",
     "metric_description": "Higher accuracy/F1/AUC is better",
+    "features_count": 24,
     "legacy": {
       "name": "Logistic Regression",
       "type": "Legacy",
@@ -638,6 +690,20 @@ Return full model comparison metrics, winners, and feature importance.
       "f1_gain": 0.08,
       "auc_gain": 0.08
     }
+  },
+  "anomaly_detection": {
+    "task": "Unsupervised — detect overspending months per user",
+    "model": "Isolation Forest",
+    "trained": true,
+    "params": { "n_estimators": 150, "contamination": 0.1 }
+  },
+  "recommendation": {
+    "task": "Association rules — suggest co-purchased items",
+    "model": "FP-Growth",
+    "trained": true,
+    "top_rules": [
+      { "if": ["Atta"], "then": ["Toor Dal"], "confidence": 0.72, "lift": 3.4 }
+    ]
   },
   "feature_importance": {
     "demand_xgboost": {
