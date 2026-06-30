@@ -313,8 +313,28 @@ def compute_item_stats(purchases: pd.DataFrame, metadata: pd.DataFrame, seasonal
         item_df = purchases[purchases["item"] == item]
         meta    = metadata[metadata["item"] == item]
 
+        # Category-based defaults for BigBasket items not in product_metadata
+        _CAT_DEFAULTS = {
+            "Vegetables": {"shelf_life": 7,   "nutrition_score": 7.0, "is_perishable": 1, "priority_score": 7},
+            "Fruits":     {"shelf_life": 7,   "nutrition_score": 8.0, "is_perishable": 1, "priority_score": 7},
+            "Dairy":      {"shelf_life": 5,   "nutrition_score": 7.0, "is_perishable": 1, "priority_score": 8},
+            "Grains":     {"shelf_life": 180, "nutrition_score": 6.0, "is_perishable": 0, "priority_score": 8},
+            "Protein":    {"shelf_life": 3,   "nutrition_score": 9.0, "is_perishable": 1, "priority_score": 8},
+            "Beverages":  {"shelf_life": 365, "nutrition_score": 4.0, "is_perishable": 0, "priority_score": 6},
+        }
+
+        item_category = item_df["category"].iloc[0] if len(item_df) > 0 else "Grains"
         if meta.empty:
-            continue
+            defaults = _CAT_DEFAULTS.get(item_category, {"shelf_life": 14, "nutrition_score": 5.0, "is_perishable": 0, "priority_score": 5})
+            shelf_life_val   = defaults["shelf_life"]
+            nutrition_val    = defaults["nutrition_score"]
+            is_perishable_val = defaults["is_perishable"]
+            priority_val     = defaults["priority_score"]
+        else:
+            shelf_life_val    = int(meta["shelf_life"].iloc[0])
+            nutrition_val     = float(meta["nutrition_score"].iloc[0])
+            is_perishable_val = int(meta["is_perishable"].iloc[0])
+            priority_val      = int(meta["priority_score"].iloc[0])
 
         avg_qty   = float(item_df["quantity"].mean())
         avg_price = float(item_df["price"].mean())
@@ -337,16 +357,16 @@ def compute_item_stats(purchases: pd.DataFrame, metadata: pd.DataFrame, seasonal
             "household_size":        household_size,
             "consumption_rate":      round(avg_qty * 0.8, 3),
             "price":                 round(avg_price, 2),
-            "category":              item_df["category"].iloc[0],
-            "shelf_life":            int(meta["shelf_life"].iloc[0]),
-            "expiry_risk_proxy":     round(1.0 / max(1, int(meta["shelf_life"].iloc[0])), 4),
+            "category":              item_category,
+            "shelf_life":            shelf_life_val,
+            "expiry_risk_proxy":     round(1.0 / max(1, shelf_life_val), 4),
             "is_festival_month":     int(current_month in FESTIVAL_MONTHS),
             "is_summer_month":       int(current_month in SUMMER_MONTHS),
             "is_monsoon_month":      int(current_month in MONSOON_MONTHS),
             "price_variation_index": pvi,
-            "priority_score":        int(meta["priority_score"].iloc[0]),
-            "nutrition_score":       float(meta["nutrition_score"].iloc[0]),
-            "is_perishable":         int(meta["is_perishable"].iloc[0]),
+            "priority_score":        priority_val,
+            "nutrition_score":       nutrition_val,
+            "is_perishable":         is_perishable_val,
         }
 
     return item_stats

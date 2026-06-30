@@ -8,6 +8,7 @@ from app.database.db import get_db
 from app.services.user_stats import get_user_item_stats
 from app.utils.auth import get_current_user_id
 from app.utils.helpers import FESTIVAL_MONTHS, ITEMS, MONSOON_MONTHS, SUMMER_MONTHS
+from app.utils.xai import explain_demand, explain_waste
 from app.utils.store import model_store
 
 logger = logging.getLogger(__name__)
@@ -128,6 +129,12 @@ def predict_demand(
     test_r2 = model_store["demand"]["metrics"]["xgboost"].get("r2", 0.7)
     base_confidence = max(0.0, min(1.0, test_r2))
 
+    # Build feature-importance dict once (global model importances)
+    try:
+        xgb_importances = dict(zip(DEMAND_FEATURES, xgb_model.feature_importances_))
+    except Exception:
+        xgb_importances = {}
+
     results = []
     for item, stats in item_stats.items():
         row    = _demand_row(stats)
@@ -163,6 +170,7 @@ def predict_demand(
             "seasonal_factor":            stats.get("seasonal_factor", 1.0),
             "is_festival_month":          stats.get("is_festival_month", 0),
             "urgency_message":            urgency,
+            "xai":                        {"top_factors": explain_demand(stats, xgb_importances)},
         })
 
     results.sort(key=lambda x: x["days_until_next"])
@@ -226,6 +234,7 @@ def predict_waste(
             "shelf_life_days":           shelf,
             "recommendation":            recs[risk_level],
             "is_perishable":             stats.get("is_perishable", 0),
+            "xai":                       {"top_factors": explain_waste(stats, tabnet_prob)},
         })
 
     results.sort(key=lambda x: x["waste_probability_tabnet"], reverse=True)

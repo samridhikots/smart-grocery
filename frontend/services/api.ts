@@ -56,6 +56,47 @@ export interface PurchaseCreate {
   purchase_date: string;
 }
 
+export interface BigBasketProduct {
+  product:      string;
+  brand:        string;
+  category:     string;
+  sub_category: string;
+  sale_price:   number;
+  market_price: number;
+  type:         string;
+  rating:       string;
+}
+
+export interface XAIFactor {
+  feature:      string;
+  label:        string;
+  value:        string;
+  contribution: number;
+  direction:    "up" | "down" | "neutral";
+}
+
+export interface GreenCoinsData {
+  balance:          number;
+  level:            string;
+  level_icon:       string;
+  next_level_at:    number;
+  total_purchases:  number;
+  history: {
+    id: number; amount: number; action: string; item: string; created_at: string;
+  }[];
+}
+
+export interface DatasetStat {
+  name:         string;
+  rows:         number;
+  columns:      number;
+  source:       string;
+  purpose:      string;
+  last_updated: string;
+  coverage:     string;
+  missing_pct:  number;
+}
+
 export interface DemandPrediction {
   item: string;
   category: string;
@@ -71,6 +112,7 @@ export interface DemandPrediction {
   seasonal_factor: number;
   is_festival_month: number;
   urgency_message: string;
+  xai?: { top_factors: XAIFactor[] };
 }
 
 export interface DemandResponse {
@@ -90,6 +132,7 @@ export interface WasteAlert {
   shelf_life_days: number;
   is_perishable: boolean;
   recommendation: string;
+  xai?: { top_factors: XAIFactor[] };
 }
 
 export interface WasteResponse {
@@ -105,15 +148,25 @@ export interface OptimizedItem {
   total_cost: number;
   priority_score: number;
   nutrition_score: number;
+  days_until_next?: number;
+  urgency_label?: string;
+  is_perishable?: boolean;
+  status?: "included" | "partial" | "deferred";
+  note?: string;
 }
 
 export interface OptimizationResult {
   total_cost: number;
+  total_needed?: number;
   budget: number;
   savings: number;
+  budget_gap?: number;
+  is_over_budget?: boolean;
   optimization_score: number;
   items_count: number;
+  total_items_needed?: number;
   items: OptimizedItem[];
+  deferred_items?: OptimizedItem[];
   currency: string;
 }
 
@@ -210,6 +263,12 @@ export interface SustainabilityItem {
   item: string; category: string;
   eco_score: number; co2_per_unit_g: number;
   plastic_packaging: boolean; is_biodegradable: boolean;
+  is_estimated?: boolean;
+}
+
+export interface MyItemsResponse {
+  my_items: SustainabilityItem[];
+  top_picks: SustainabilityItem[];
 }
 
 // --- Auth API (uses raw fetch so AuthContext can set token before calling api.*) ---
@@ -299,4 +358,13 @@ export const api = {
     request<SustainabilityResult>(`/sustainability?months=${months}`),
 
   getSustainabilityItems: () => request<SustainabilityItem[]>("/sustainability/items"),
+
+  getMyItemEcoScores: () => request<MyItemsResponse>("/sustainability/my-items"),
+
+  searchProducts: (q: string, limit = 20) =>
+    request<BigBasketProduct[]>(`/products/search?q=${encodeURIComponent(q)}&limit=${limit}`),
+
+  getGreenCoins: () => request<GreenCoinsData>("/green-coins"),
+
+  getDatasetStats: () => request<DatasetStat[]>("/datasets/stats"),
 };

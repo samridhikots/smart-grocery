@@ -65,7 +65,7 @@ export default function Home() {
         >
           <ShoppingCart className="w-4 h-4" /> Built for Indian households
         </div>
-        <h1 className="text-5xl sm:text-6xl font-bold text-gray-900 mb-5 leading-tight tracking-tight">
+        <h1 className="text-5xl sm:text-6xl font-bold text-white mb-5 leading-tight tracking-tight">
           Save money.
           <span className="block" style={{ color: "var(--green-primary)" }}>
             Reduce waste. Shop smarter.
@@ -87,7 +87,7 @@ export default function Home() {
 
       {/* How it works */}
       <section>
-        <h2 className="text-2xl font-bold text-gray-800 text-center mb-10">How it works</h2>
+        <h2 className="text-2xl font-bold text-white text-center mb-10">How it works</h2>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
           {HOW_IT_WORKS.map(({ step, title, desc, bg }, i) => (
             <div

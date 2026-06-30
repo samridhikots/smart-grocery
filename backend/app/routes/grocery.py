@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.database.db import get_db, PurchaseRecord
 from app.utils.auth import get_current_user_id
-from app.utils.helpers import ITEMS
+from app.routes.coins import award_coins
 
 router = APIRouter()
 
@@ -35,10 +35,9 @@ def add_purchase(
     user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ):
-    if purchase.item not in ITEMS or purchase.category not in [
-        "Vegetables", "Fruits", "Dairy", "Grains", "Protein", "Beverages"
-    ]:
-        raise HTTPException(status_code=400, detail=f"Unknown item: {purchase.item}")
+    _VALID_CATEGORIES = {"Vegetables", "Fruits", "Dairy", "Grains", "Protein", "Beverages"}
+    if purchase.category not in _VALID_CATEGORIES:
+        raise HTTPException(status_code=400, detail=f"Invalid category: {purchase.category}")
 
     record = PurchaseRecord(
         user_id=user_id,
@@ -49,6 +48,7 @@ def add_purchase(
         purchase_date=purchase.purchase_date.isoformat(),
     )
     db.add(record)
+    award_coins(user_id, purchase.item, purchase.category, db)
     db.commit()
     db.refresh(record)
     return record
@@ -102,13 +102,14 @@ def delete_purchase(
 
 @router.get("/items")
 def list_items():
+    from app.utils.helpers import ITEMS
     return [
         {
-            "item": item,
-            "category": props["category"],
+            "item":      item,
+            "category":  props["category"],
             "avg_price": props["avg_price"],
             "shelf_life": props["shelf_life"],
-            "priority": props["priority"],
+            "priority":  props["priority"],
         }
         for item, props in ITEMS.items()
     ]

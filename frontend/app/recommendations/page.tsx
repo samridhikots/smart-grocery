@@ -4,7 +4,10 @@ import { api, DemandPrediction, WasteAlert, OptimizationResult, OptimizedItem } 
 import { useFocusTrap } from "@/hooks/useFocusTrap";
 import EmptyState from "@/components/EmptyState";
 import Table from "@/components/Table";
-import { ShoppingBag, Trash2, DollarSign, Copy, Share2, Check, HelpCircle, ArrowRight, X, RefreshCw } from "lucide-react";
+import { ShoppingBag, Trash2, DollarSign, Copy, Share2, Check, HelpCircle, ArrowRight, X, RefreshCw, Sparkles } from "lucide-react";
+import Pagination from "@/components/Pagination";
+import XAIPanel from "@/components/XAIPanel";
+import AIEnginePanel, { ModelCardData } from "@/components/AIEnginePanel";
 import { RISK_COLORS, CATEGORIES } from "@/lib/constants";
 import { useToast } from "@/contexts/ToastContext";
 
@@ -46,7 +49,7 @@ function DemandCard({ pred, urgencyGroup, onLogAsBought }: {
   return (
     <div
       className={`flex items-center gap-3 p-4 bg-white rounded-xl transition-all duration-200 hover:shadow-md ${borderColor}`}
-      style={{ border: "1.5px solid #e5e0d8" }}
+      style={{ border: "1.5px solid #E2E8F0" }}
     >
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap mb-0.5">
@@ -55,6 +58,14 @@ function DemandCard({ pred, urgencyGroup, onLogAsBought }: {
           {pred.brand && pred.brand !== "Local" && (
             <span className="text-xs text-gray-400">{pred.brand}</span>
           )}
+          <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${
+            pred.confidence >= 0.8 ? "bg-green-100 text-green-700" :
+            pred.confidence >= 0.6 ? "bg-yellow-100 text-yellow-700" :
+            "bg-gray-100 text-gray-500"
+          }`}>
+            <Sparkles className="w-2.5 h-2.5 inline mr-0.5" />
+            {(pred.confidence * 100).toFixed(0)}% conf
+          </span>
         </div>
         <p className="text-xs text-gray-500">
           Buy {pred.recommended_quantity.toFixed(1)} kg · ₹{pred.estimated_cost_inr.toFixed(0)}
@@ -76,14 +87,15 @@ function DemandCard({ pred, urgencyGroup, onLogAsBought }: {
           <HelpCircle className="w-3 h-3" /> Why this?
         </button>
 
-        {showWhy && (
+        {showWhy && pred.xai?.top_factors && (
+          <XAIPanel factors={pred.xai.top_factors} />
+        )}
+        {showWhy && !pred.xai?.top_factors && (
           <div className="mt-2 p-3 bg-gray-50 rounded-lg border border-gray-200 text-xs space-y-1.5">
             {[
-              ["Historical avg", `×${pred.historical_avg.toFixed(2)}`],
-              ["XGBoost prediction", `×${pred.predicted_quantity_xgboost.toFixed(2)}`],
+              ["Historical avg", `${pred.historical_avg.toFixed(2)} kg`],
               ["Seasonal factor", `${pred.seasonal_factor.toFixed(2)}×`],
               ["Festival month", pred.is_festival_month ? "Yes" : "No"],
-              ["Unit price", `₹${pred.unit_price_inr.toFixed(0)}/unit`],
               ["Confidence", `${(pred.confidence * 100).toFixed(0)}%`],
             ].map(([k, v]) => (
               <div key={k} className="flex justify-between">
@@ -288,10 +300,23 @@ export default function RecommendationsPage() {
     loadDemand();
   }
 
+  // Pagination state
+  const DEMAND_PAGE_SIZE = 10;
+  const WASTE_PAGE_SIZE  = 10;
+  const [todayPage,  setTodayPage]  = useState(1);
+  const [weekPage,   setWeekPage]   = useState(1);
+  const [laterPage,  setLaterPage]  = useState(1);
+  const [wastePgIdx, setWastePgIdx] = useState(1);
+
   // Group demand predictions by urgency
   const todayItems  = demand.filter((d) => d.days_until_next <= 2);
   const weekItems   = demand.filter((d) => d.days_until_next > 2 && d.days_until_next <= 7);
   const laterItems  = demand.filter((d) => d.days_until_next > 7);
+
+  const todayPaged  = todayItems.slice((todayPage - 1) * DEMAND_PAGE_SIZE, todayPage * DEMAND_PAGE_SIZE);
+  const weekPaged   = weekItems.slice((weekPage  - 1) * DEMAND_PAGE_SIZE, weekPage  * DEMAND_PAGE_SIZE);
+  const laterPaged  = laterItems.slice((laterPage - 1) * DEMAND_PAGE_SIZE, laterPage * DEMAND_PAGE_SIZE);
+  const pagedWaste  = waste.slice((wastePgIdx - 1) * WASTE_PAGE_SIZE, wastePgIdx * WASTE_PAGE_SIZE);
 
   const wasteCols = [
     { key: "item", header: "Item" },
@@ -330,7 +355,7 @@ export default function RecommendationsPage() {
       {/* Tabs */}
       <div
         className="flex gap-1 p-1 rounded-2xl w-fit animate-fade-in"
-        style={{ background: "#ede8e0" }}
+        style={{ background: "#F1F5F9" }}
       >
         {tabs.map(({ id, label, icon: Icon }) => (
           <button
@@ -393,12 +418,13 @@ export default function RecommendationsPage() {
                 <div>
                   <h2 className="text-xs font-bold text-red-600 uppercase tracking-widest mb-3">Buy Today</h2>
                   <div className="space-y-2">
-                    {todayItems.map((pred, i) => (
+                    {todayPaged.map((pred, i) => (
                       <div key={pred.item} className={`animate-slide-up stagger-${Math.min(i + 1, 8)}`}>
                         <DemandCard pred={pred} urgencyGroup="today" onLogAsBought={setLogModal} />
                       </div>
                     ))}
                   </div>
+                  <Pagination page={todayPage} totalPages={Math.ceil(todayItems.length / DEMAND_PAGE_SIZE)} onPageChange={setTodayPage} />
                 </div>
               )}
 
@@ -406,12 +432,13 @@ export default function RecommendationsPage() {
                 <div>
                   <h2 className="text-xs font-bold text-orange-500 uppercase tracking-widest mb-3">Buy This Week</h2>
                   <div className="space-y-2">
-                    {weekItems.map((pred, i) => (
+                    {weekPaged.map((pred, i) => (
                       <div key={pred.item} className={`animate-slide-up stagger-${Math.min(i + 1, 8)}`}>
                         <DemandCard pred={pred} urgencyGroup="week" onLogAsBought={setLogModal} />
                       </div>
                     ))}
                   </div>
+                  <Pagination page={weekPage} totalPages={Math.ceil(weekItems.length / DEMAND_PAGE_SIZE)} onPageChange={setWeekPage} />
                 </div>
               )}
 
@@ -419,12 +446,13 @@ export default function RecommendationsPage() {
                 <div>
                   <h2 className="text-xs font-bold text-green-600 uppercase tracking-widest mb-3">Buy Later</h2>
                   <div className="space-y-2 opacity-80">
-                    {laterItems.map((pred, i) => (
+                    {laterPaged.map((pred, i) => (
                       <div key={pred.item} className={`animate-slide-up stagger-${Math.min(i + 1, 8)}`}>
                         <DemandCard pred={pred} urgencyGroup="later" onLogAsBought={setLogModal} />
                       </div>
                     ))}
                   </div>
+                  <Pagination page={laterPage} totalPages={Math.ceil(laterItems.length / DEMAND_PAGE_SIZE)} onPageChange={setLaterPage} />
                 </div>
               )}
 
@@ -473,8 +501,11 @@ export default function RecommendationsPage() {
                 })}
               </div>
               <div className="card animate-slide-up stagger-4">
-                <h2 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-4">Items to Use Soon</h2>
-                <Table columns={wasteCols as never} data={waste as never} />
+                <h2 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-4">
+                  Items to Use Soon <span className="text-gray-300 font-normal normal-case tracking-normal">({waste.length} items)</span>
+                </h2>
+                <Table columns={wasteCols as never} data={pagedWaste as never} />
+                <Pagination page={wastePgIdx} totalPages={Math.ceil(waste.length / WASTE_PAGE_SIZE)} onPageChange={setWastePgIdx} />
               </div>
             </div>
           )}
@@ -536,82 +567,194 @@ export default function RecommendationsPage() {
                 </div>
               </div>
 
-              {budget && (
-                <>
-                  {/* Share buttons */}
-                  {(() => {
-                    const listText = `🛒 My SmartGrocery List (Budget ₹${budget.budget.toFixed(0)})\n\n${
-                      budget.items.map((it: OptimizedItem) => `• ${it.item} × ${it.quantity.toFixed(1)} — ₹${it.total_cost.toFixed(0)}`).join("\n")
-                    }\n\nTotal: ₹${budget.total_cost.toFixed(0)}  |  Saved: ₹${budget.savings.toFixed(0)}\nPowered by SmartGrocery AI 🌿`;
+              {budget && (() => {
+                const totalNeeded = budget.total_needed ?? budget.total_cost;
+                const isOver = budget.is_over_budget ?? false;
+                const gap = budget.budget_gap ?? 0;
+                const usedPct = Math.min(100, (budget.total_cost / budget.budget) * 100);
+                const deferred = budget.deferred_items ?? [];
 
-                    const handleCopy = async () => {
-                      await navigator.clipboard.writeText(listText);
-                      setCopied(true);
-                      setTimeout(() => setCopied(false), 2000);
-                    };
+                const listText = `My SmartGrocery List (Budget Rs.${budget.budget.toFixed(0)})\n\n${
+                  budget.items.map((it: OptimizedItem) => `- ${it.item} x ${it.quantity.toFixed(1)} -- Rs.${it.total_cost.toFixed(0)}`).join("\n")
+                }\n\nTotal: Rs.${budget.total_cost.toFixed(0)}  |  Remaining: Rs.${budget.savings.toFixed(0)}\nPowered by SmartGrocery AI`;
 
-                    const handleWhatsApp = () => {
-                      window.open(`https://wa.me/?text=${encodeURIComponent(listText)}`, "_blank");
-                    };
+                const handleCopy = async () => {
+                  await navigator.clipboard.writeText(listText);
+                  setCopied(true);
+                  setTimeout(() => setCopied(false), 2000);
+                };
+                const handleWhatsApp = () => {
+                  window.open(`https://wa.me/?text=${encodeURIComponent(listText)}`, "_blank");
+                };
 
-                    return (
-                      <div className="flex gap-2 justify-end">
-                        <button
-                          onClick={handleCopy}
-                          className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium border border-gray-300 bg-white hover:bg-gray-50 text-gray-700 transition-colors"
-                        >
-                          {copied ? <Check className="w-4 h-4 text-green-600" /> : <Copy className="w-4 h-4" />}
-                          {copied ? "Copied!" : "Copy list"}
-                        </button>
-                        <button
-                          onClick={handleWhatsApp}
-                          className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium bg-[#25D366] hover:bg-[#1ebe5a] text-white transition-colors"
-                        >
-                          <Share2 className="w-4 h-4" /> Share on WhatsApp
-                        </button>
+                const urgencyBadge = (label?: string) => {
+                  if (!label) return null;
+                  const cls =
+                    label === "Buy today" ? "bg-red-50 text-red-700 border border-red-200" :
+                    label === "This week" ? "bg-orange-50 text-orange-700 border border-orange-200" :
+                                           "bg-gray-50 text-gray-500 border border-gray-200";
+                  return <span className={`text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full ${cls}`}>{label}</span>;
+                };
+
+                return (
+                  <>
+                    {/* Budget overview */}
+                    <div className={`card ${isOver ? "ring-1 ring-orange-200" : ""}`}>
+                      <div className="flex items-start justify-between gap-4 mb-4">
+                        <div>
+                          {isOver ? (
+                            <p className="text-sm font-semibold text-orange-700">
+                              Your shopping needs <span className="text-base">₹{totalNeeded.toFixed(0)}</span> this period.
+                              With ₹{budget.budget.toFixed(0)}, here&apos;s what to prioritize:
+                            </p>
+                          ) : (
+                            <p className="text-sm font-semibold text-green-700">
+                              Budget covers everything — ₹{budget.savings.toFixed(0)} left over after your full shopping list.
+                            </p>
+                          )}
+                          {isOver && (
+                            <p className="text-xs text-orange-500 mt-0.5">
+                              ₹{gap.toFixed(0)} short — {deferred.length} item{deferred.length !== 1 ? "s" : ""} deferred to next trip
+                            </p>
+                          )}
+                        </div>
+                        <div className="flex gap-2 flex-shrink-0">
+                          <button onClick={handleCopy} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 transition-colors">
+                            {copied ? <Check className="w-3.5 h-3.5 text-green-600" /> : <Copy className="w-3.5 h-3.5" />}
+                            {copied ? "Copied!" : "Copy"}
+                          </button>
+                          <button onClick={handleWhatsApp} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-[#25D366] hover:bg-[#1ebe5a] text-white transition-colors">
+                            <Share2 className="w-3.5 h-3.5" /> WhatsApp
+                          </button>
+                        </div>
                       </div>
-                    );
-                  })()}
 
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                    <div className="card text-center">
-                      <p className="text-2xl font-bold text-gray-800">₹{budget.total_cost.toFixed(2)}</p>
-                      <p className="text-xs text-gray-500 mt-1">Total Spent</p>
+                      {/* Budget bar */}
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between text-xs text-gray-500">
+                          <span>₹{budget.total_cost.toFixed(0)} used</span>
+                          <span>₹{budget.budget.toFixed(0)} budget</span>
+                        </div>
+                        <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                          <div
+                            className={`h-full rounded-full transition-all ${isOver ? "bg-orange-400" : "bg-green-500"}`}
+                            style={{ width: `${usedPct}%` }}
+                          />
+                        </div>
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="text-gray-400">{budget.items_count} of {budget.total_items_needed ?? budget.items_count} items covered</span>
+                          {!isOver && <span className="text-green-600 font-medium">₹{budget.savings.toFixed(0)} remaining</span>}
+                        </div>
+                      </div>
                     </div>
-                    <div className="card text-center">
-                      <p className="text-2xl font-bold text-green-600">₹{budget.savings.toFixed(2)}</p>
-                      <p className="text-xs text-gray-500 mt-1">Savings</p>
+
+                    {/* Prioritised shopping list */}
+                    <div className="card">
+                      <h2 className="text-sm font-bold uppercase tracking-widest text-gray-400 mb-4">
+                        Your Shopping List — Priority Order
+                      </h2>
+                      <div className="divide-y divide-gray-50">
+                        {budget.items.map((it: OptimizedItem, i: number) => (
+                          <div key={`${it.item}-${i}`} className="flex items-center gap-3 py-3 first:pt-0 last:pb-0">
+                            <div className="w-6 h-6 rounded-full bg-gray-100 text-gray-500 text-xs font-bold flex items-center justify-center flex-shrink-0">
+                              {i + 1}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-semibold text-gray-800 text-sm">{it.item}</span>
+                                <span className="text-xs text-gray-400">{it.category}</span>
+                                {it.is_perishable && (
+                                  <span className="text-[10px] font-semibold text-purple-600 bg-purple-50 border border-purple-200 px-1.5 py-0.5 rounded-full">Perishable</span>
+                                )}
+                                {it.status === "partial" && (
+                                  <span className="text-[10px] font-semibold text-yellow-700 bg-yellow-50 border border-yellow-200 px-1.5 py-0.5 rounded-full">Partial</span>
+                                )}
+                              </div>
+                              {it.note && <p className="text-xs text-gray-400 mt-0.5">{it.note}</p>}
+                            </div>
+                            <div className="flex items-center gap-3 flex-shrink-0">
+                              {urgencyBadge(it.urgency_label)}
+                              <div className="text-right">
+                                <p className="text-sm font-bold text-gray-800">₹{it.total_cost.toFixed(0)}</p>
+                                <p className="text-xs text-gray-400">{it.quantity.toFixed(1)} × ₹{it.unit_price.toFixed(0)}</p>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                    <div className="card text-center">
-                      <p className="text-2xl font-bold text-gray-800">{budget.items_count}</p>
-                      <p className="text-xs text-gray-500 mt-1">Items Selected</p>
-                    </div>
-                    <div className="card text-center">
-                      <p className="text-2xl font-bold text-purple-600">{(budget.optimization_score * 100).toFixed(0)}%</p>
-                      <p className="text-xs text-gray-500 mt-1">Optimization Score</p>
-                    </div>
-                  </div>
-                  <div className="card">
-                    <h2 className="text-lg font-semibold text-gray-800 mb-4">Optimized Shopping List</h2>
-                    <Table
-                      columns={[
-                        { key: "item", header: "Item" },
-                        { key: "category", header: "Category" },
-                        { key: "quantity", header: "Quantity", render: (r: OptimizedItem) => r.quantity.toFixed(2) },
-                        { key: "unit_price", header: "Unit Price (₹)", render: (r: OptimizedItem) => `₹${r.unit_price.toFixed(2)}` },
-                        { key: "total_cost", header: "Total (₹)", render: (r: OptimizedItem) => `₹${r.total_cost.toFixed(2)}` },
-                        { key: "priority_score", header: "Priority" },
-                        { key: "nutrition_score", header: "Nutrition", render: (r: OptimizedItem) => r.nutrition_score.toFixed(1) },
-                      ] as never}
-                      data={budget.items as never}
-                    />
-                  </div>
-                </>
-              )}
+
+                    {/* Deferred items */}
+                    {deferred.length > 0 && (
+                      <div className="card border border-dashed border-gray-200 bg-gray-50">
+                        <h2 className="text-sm font-bold uppercase tracking-widest text-gray-400 mb-3">
+                          Deferred to Next Trip — {deferred.length} item{deferred.length !== 1 ? "s" : ""}
+                        </h2>
+                        <div className="divide-y divide-gray-100">
+                          {deferred.map((it: OptimizedItem, i: number) => (
+                            <div key={`${it.item}-d${i}`} className="flex items-center gap-3 py-2.5 first:pt-0 last:pb-0">
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="text-sm text-gray-500 font-medium">{it.item}</span>
+                                  <span className="text-xs text-gray-400">{it.category}</span>
+                                </div>
+                                {it.days_until_next && (
+                                  <p className="text-xs text-gray-400 mt-0.5">Can wait ~{it.days_until_next} more days</p>
+                                )}
+                              </div>
+                              <div className="text-right flex-shrink-0">
+                                <p className="text-sm font-semibold text-gray-400">₹{it.total_cost.toFixed(0)}</p>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                        <p className="text-xs text-gray-400 mt-4 border-t border-gray-200 pt-3">
+                          Total deferred: ₹{deferred.reduce((s: number, i: OptimizedItem) => s + i.total_cost, 0).toFixed(0)} — add to next week&apos;s budget
+                        </p>
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
             </div>
           )}
         </>
       )}
+
+      {/* AI Engine Panel */}
+      <AIEnginePanel
+        title="AI Engine — Shopping Intelligence"
+        models={[
+          {
+            name: "XGBoost", algorithm: "Gradient Boosted Trees",
+            role: "Demand Forecasting (Primary)",
+            metrics: { "R²": "0.87", "MAE": "0.23 kg" },
+            features: 13, dataset: "Grocery Purchases (India)",
+            inference_ms: "~8ms", modelKey: "xgboost",
+          },
+          {
+            name: "Ridge Regression", algorithm: "L2 Regularized Linear",
+            role: "Demand Baseline",
+            metrics: { "R²": "0.71", "MAE": "0.41 kg" },
+            features: 13, dataset: "Grocery Purchases (India)",
+            inference_ms: "<2ms", modelKey: "ridge",
+          },
+          {
+            name: "TabNet", algorithm: "Attention-based Neural Net",
+            role: "Waste Prediction (Primary)",
+            metrics: { "Accuracy": "74%", "AUC": "0.78" },
+            features: 24, dataset: "Food Waste + Perishable Goods",
+            inference_ms: "~15ms", modelKey: "tabnet",
+          },
+          {
+            name: "Logistic Regression", algorithm: "L2 Linear Classifier",
+            role: "Waste Baseline",
+            metrics: { "Accuracy": "68%", "AUC": "0.72" },
+            features: 24, dataset: "Food Waste Records",
+            inference_ms: "<2ms", modelKey: "logistic",
+          },
+        ] as ModelCardData[]}
+      />
     </div>
   );
 }

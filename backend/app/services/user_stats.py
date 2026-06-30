@@ -52,10 +52,10 @@ def get_user_item_stats(user_id: int, db, fallback_stats: dict) -> dict:
 
         user_stats = compute_item_stats(df, metadata, seasonal, household_size=household_size)
 
-        # Merge: user's real data overrides catalog defaults
-        merged = dict(fallback_stats)
-        merged.update(user_stats)
-        return merged
+        # Only return items the user has actually purchased.
+        # Merging with fallback_stats would inject hundreds of training-dataset items
+        # that the user has never bought, causing spurious waste/demand predictions.
+        return user_stats
 
     except Exception as exc:
         logger.warning("[user_stats] Failed to build stats for user %d: %s", user_id, exc)

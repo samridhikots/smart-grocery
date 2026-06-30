@@ -34,8 +34,9 @@ export default function SignUpPage() {
   };
 
   return (
-    <div className="min-h-[80vh] flex items-center justify-center">
-      <div className="w-full max-w-md">
+    <div className="min-h-[80vh] bg-[url('/grocerystore.jpg')] bg-cover bg-center">
+      <div className="min-h-[80vh] bg-black/40 flex items-center justify-center">
+        <div className="w-full max-w-md bg-white rounded-2xl my-4 p-2">
         {/* Logo */}
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-14 h-14 bg-green-100 rounded-2xl mb-4">
@@ -142,6 +143,7 @@ export default function SignUpPage() {
             </div>
           ))}
         </div>
+      </div>
       </div>
     </div>
   );

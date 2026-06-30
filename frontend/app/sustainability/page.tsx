@@ -1,8 +1,11 @@
 "use client";
 import { useEffect, useState } from "react";
-import { api, SustainabilityResult, SustainabilityItem } from "@/services/api";
+import { api, SustainabilityResult, SustainabilityItem, MyItemsResponse } from "@/services/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { Leaf, RefreshCw, ChevronDown, ChevronUp, AlertTriangle, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
+import Pagination from "@/components/Pagination";
+import GreenCoinsWidget from "@/components/GreenCoinsWidget";
+import AIEnginePanel, { ModelCardData } from "@/components/AIEnginePanel";
 import { BarChartComponent } from "@/components/Chart";
 import { BRAND_COLORS, ECO_SCORE } from "@/lib/constants";
 import { useFetch } from "@/hooks/useFetch";
@@ -44,10 +47,13 @@ function SortIcon({ active, dir }: { active: boolean; dir: "asc" | "desc" }) {
 function ItemsTable({ items }: { items: SustainabilityItem[] }) {
   const [sortCol, setSortCol] = useState<SortCol>("eco_score");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 10;
 
   function toggleSort(col: SortCol) {
     if (sortCol === col) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
     else { setSortCol(col); setSortDir("desc"); }
+    setPage(1);
   }
 
   const sorted = [...items].sort((a, b) => {
@@ -57,6 +63,8 @@ function ItemsTable({ items }: { items: SustainabilityItem[] }) {
     if (typeof av === "number")  return (av - (bv as number)) * mult;
     return String(av).localeCompare(String(bv)) * mult;
   });
+  const totalPages = Math.ceil(sorted.length / PAGE_SIZE);
+  const paged = sorted.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   const headers: { key: SortCol; label: string }[] = [
     { key: "item",              label: "Item" },
@@ -69,9 +77,9 @@ function ItemsTable({ items }: { items: SustainabilityItem[] }) {
 
   return (
     <div className="overflow-x-auto">
-      <table className="w-full text-sm">
+      <table className="w-full text-sm" aria-label={`Items table, ${sorted.length} items`}>
         <thead>
-          <tr style={{ borderBottom: "1.5px solid #e5e0d8" }}>
+          <tr style={{ borderBottom: "1.5px solid #E2E8F0" }}>
             {headers.map(({ key, label }) => (
               <th
                 key={key}
@@ -87,9 +95,14 @@ function ItemsTable({ items }: { items: SustainabilityItem[] }) {
           </tr>
         </thead>
         <tbody>
-          {sorted.map((it) => (
+          {paged.map((it) => (
             <tr key={it.item} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
-              <td className="py-2 px-3 font-medium text-gray-800">{it.item}</td>
+              <td className="py-2 px-3">
+                <span className="font-medium text-gray-800">{it.item}</span>
+                {it.is_estimated && (
+                  <span className="ml-1 text-[10px] text-gray-400" title="Score estimated from category average">~est</span>
+                )}
+              </td>
               <td className="py-2 px-3 text-gray-500">{it.category}</td>
               <td className="py-2 px-3">
                 <span className={`font-bold ${it.eco_score >= ECO_SCORE.good ? "text-green-600" : it.eco_score >= ECO_SCORE.fair ? "text-yellow-600" : "text-red-600"}`}>
@@ -111,6 +124,7 @@ function ItemsTable({ items }: { items: SustainabilityItem[] }) {
           ))}
         </tbody>
       </table>
+      <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
     </div>
   );
 }
@@ -122,12 +136,14 @@ export default function SustainabilityPage() {
   const [ringOffset, setRingOffset]      = useState(314);
 
   const { data, loading, error, refresh: load } = useFetch(
-    () => Promise.all([api.getSustainability(months), api.getSustainabilityItems()]),
+    () => Promise.all([api.getSustainability(months), api.getMyItemEcoScores()]),
     [months]
   );
 
-  const report = data?.[0] as SustainabilityResult | undefined;
-  const items  = (data?.[1] as SustainabilityItem[] | undefined) ?? [];
+  const report    = data?.[0] as SustainabilityResult | undefined;
+  const myData    = data?.[1] as MyItemsResponse | undefined;
+  const items     = myData?.my_items ?? [];
+  const topPicks  = myData?.top_picks ?? [];
 
   const topPolluters = [...items]
     .sort((a, b) => b.co2_per_unit_g - a.co2_per_unit_g)
@@ -169,6 +185,9 @@ export default function SustainabilityPage() {
 
   return (
     <div className="space-y-6">
+
+      {/* Green Coins Widget */}
+      <GreenCoinsWidget />
 
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 animate-fade-in">
@@ -309,16 +328,21 @@ export default function SustainabilityPage() {
         </>
       )}
 
-      {/* Charts + sortable table — collapsed */}
-      {(topPolluters.length > 0 || ecoScoreData.length > 0 || items.length > 0) && (
+      {/* Your purchased items — eco breakdown */}
+      {items.length > 0 && (
         <div className="card animate-slide-up stagger-3">
           <button
             onClick={() => setDetailOpen((o) => !o)}
             className="flex items-center justify-between w-full text-left"
           >
-            <span className="text-xs font-bold uppercase tracking-widest text-gray-400">Full breakdown by item</span>
-            <span className="flex items-center gap-1 text-xs font-semibold" style={{ color: "var(--green-primary)" }}>
-              {detailOpen ? "Hide" : "Show charts & table"}
+            <div>
+              <span className="text-xs font-bold uppercase tracking-widest text-gray-400">Your Items — Eco Breakdown</span>
+              <span className="ml-2 text-xs text-gray-400 font-normal normal-case tracking-normal">
+                ({items.length} item{items.length !== 1 ? "s" : ""} you&apos;ve purchased)
+              </span>
+            </div>
+            <span className="flex items-center gap-1 text-xs font-semibold flex-shrink-0" style={{ color: "var(--green-primary)" }}>
+              {detailOpen ? "Hide" : "Show breakdown"}
               {detailOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
             </span>
           </button>
@@ -330,8 +354,8 @@ export default function SustainabilityPage() {
                   data={topPolluters}
                   xKey="item"
                   bars={[{ key: "co2", color: "#6b7280", name: "CO₂ per unit (kg)" }]}
-                  title="CO₂ Footprint by Item (top 10)"
-                  height={280}
+                  title="CO₂ Footprint — Your Items"
+                  height={240}
                 />
               )}
               {ecoScoreData.length > 0 && (
@@ -339,23 +363,74 @@ export default function SustainabilityPage() {
                   data={ecoScoreData}
                   xKey="item"
                   bars={[{ key: "score", color: BRAND_COLORS.green, name: "Eco Score (0-10)" }]}
-                  title="Eco Scores by Item (higher = better)"
-                  height={280}
+                  title="Eco Scores — Your Items (higher = greener)"
+                  height={240}
                 />
               )}
-              {items.length > 0 && (
-                <>
-                  <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400">
-                    All Items — Environmental Profile
-                    <span className="ml-2 text-gray-300 font-normal normal-case tracking-normal">click any column to sort</span>
-                  </h3>
-                  <ItemsTable items={items} />
-                </>
-              )}
+              <div>
+                <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-1">
+                  Detailed Environmental Profile
+                  <span className="ml-2 text-gray-300 font-normal normal-case tracking-normal">click any column to sort · ~estimated from category</span>
+                </h3>
+                <ItemsTable items={items} />
+              </div>
             </div>
           )}
         </div>
       )}
+
+      {/* Top eco-friendly picks for your categories */}
+      {topPicks.length > 0 && (
+        <div className="card animate-slide-up stagger-4">
+          <h2 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-1">
+            Top Eco-Friendly Picks for Your Categories
+          </h2>
+          <p className="text-xs text-gray-400 mb-4">
+            Highest-rated sustainable items in the categories you shop — consider swapping in some of these.
+          </p>
+          <div className="space-y-2">
+            {topPicks.map((pick, i) => (
+              <div
+                key={pick.item}
+                className={`flex items-center gap-3 p-3 bg-white rounded-xl border border-gray-100 animate-slide-up stagger-${Math.min(i + 1, 8)}`}
+              >
+                <div
+                  className="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold text-white flex-shrink-0"
+                  style={{ background: pick.eco_score >= 7 ? BRAND_COLORS.green : pick.eco_score >= 5 ? "#f59e0b" : "#ef4444" }}
+                >
+                  {pick.eco_score.toFixed(0)}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-gray-800 text-sm">{pick.item}</p>
+                  <p className="text-xs text-gray-400">{pick.category} · {pick.co2_per_unit_g}g CO₂/unit</p>
+                </div>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  {pick.plastic_packaging
+                    ? <span className="text-xs bg-orange-50 text-orange-600 px-2 py-0.5 rounded-full border border-orange-100">Plastic</span>
+                    : <span className="text-xs bg-green-50 text-green-700 px-2 py-0.5 rounded-full border border-green-100">Plastic-free</span>}
+                  {pick.is_biodegradable
+                    ? <span className="text-xs bg-green-50 text-green-700 px-2 py-0.5 rounded-full border border-green-100">Biodegradable</span>
+                    : null}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* AI Engine Panel */}
+      <AIEnginePanel
+        title="AI Engine — Sustainability Tracker"
+        models={[
+          {
+            name: "Sustainability Tracker", algorithm: "Rule-based Weighted Scoring",
+            role: "Eco Impact Analysis",
+            metrics: { "Eco score": "0–10", "CO₂ basis": "by category" },
+            features: 5, dataset: "BigBasket + FAO CO₂ data",
+            inference_ms: "<1ms", modelKey: "sustainability",
+          },
+        ] as ModelCardData[]}
+      />
 
     </div>
   );

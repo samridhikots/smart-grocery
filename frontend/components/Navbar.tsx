@@ -7,6 +7,7 @@ import {
   Lightbulb, Leaf, BarChart2, LogOut, ChevronDown, ShoppingBag, Check, X,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import { api } from "@/services/api";
 
 const PRIMARY_LINKS = [
   { href: "/dashboard",       label: "Dashboard",     icon: LayoutDashboard },
@@ -25,6 +26,7 @@ export default function Navbar() {
   const { user, logout } = useAuth();
   const [moreOpen,      setMoreOpen]      = useState(false);
   const [confirmLogout, setConfirmLogout] = useState(false);
+  const [coinBalance,   setCoinBalance]   = useState<number | null>(null);
   const moreRef    = useRef<HTMLDivElement>(null);
   const moreButton = useRef<HTMLButtonElement>(null);
 
@@ -44,6 +46,12 @@ export default function Navbar() {
       document.removeEventListener("keydown", onKeyDown);
     };
   }, []);
+
+  // Fetch coin balance on login and on every page navigation
+  useEffect(() => {
+    if (!user) return;
+    api.getGreenCoins().then((d) => setCoinBalance(d.balance)).catch(() => {});
+  }, [user, pathname]);
 
   // Auto-cancel logout confirmation after 3 s
   useEffect(() => {
@@ -85,8 +93,8 @@ export default function Navbar() {
     <nav
       className="bg-white sticky top-0 z-50"
       style={{
-        borderBottom: "1.5px solid #e5e0d8",
-        boxShadow: "0 1px 6px rgba(0,0,0,0.06)",
+        borderBottom: "1.5px solid #E2E8F0",
+        boxShadow: "0 1px 6px rgba(0,0,0,0.05)",
       }}
     >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -139,14 +147,14 @@ export default function Navbar() {
                 href="/add"
                 className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-sm font-semibold transition-all duration-150 whitespace-nowrap mx-1 ${
                   pathname === "/add"
-                    ? "text-green-700 bg-green-50 ring-2 ring-green-200"
-                    : "text-white hover:opacity-90"
+                    ? "text-[#1C4A00] bg-green-50 ring-2 ring-green-200"
+                    : "text-[#1C4A00] font-bold hover:opacity-90"
                 }`}
                 style={
                   pathname !== "/add"
                     ? {
                         background: "var(--green-primary)",
-                        boxShadow: "0 2px 4px rgba(45,122,58,0.28)",
+                        boxShadow: "0 2px 4px rgba(132,189,0,0.30)",
                       }
                     : undefined
                 }
@@ -182,8 +190,8 @@ export default function Navbar() {
                     onKeyDown={handleDropdownKeyDown}
                     className="absolute right-0 top-full mt-2 w-56 bg-white rounded-2xl overflow-hidden animate-slide-down"
                     style={{
-                      border: "1.5px solid #e5e0d8",
-                      boxShadow: "0 8px 24px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.06)",
+                      border: "1.5px solid #E2E8F0",
+                      boxShadow: "0 8px 24px rgba(0,0,0,0.10), 0 2px 8px rgba(0,0,0,0.05)",
                     }}
                   >
                     {MORE_LINKS.map(({ href, label, icon: Icon, badge }) => (
@@ -218,15 +226,26 @@ export default function Navbar() {
 
           {/* Right side */}
           <div className="flex items-center gap-2 flex-shrink-0">
+            {/* Green coins badge */}
+            {user && coinBalance !== null && (
+              <Link
+                href="/sustainability"
+                className="hidden sm:flex items-center gap-1 px-2.5 py-1 rounded-xl text-xs font-semibold text-green-700 hover:bg-green-50 transition-colors"
+                style={{ background: "#f0faf0", border: "1.5px solid #c6e8c9" }}
+                title={`${coinBalance} Green Coins`}
+              >
+                🌱 {coinBalance}
+              </Link>
+            )}
             {user ? (
               <>
                 <div
                   className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-xl"
-                  style={{ background: "#f4f1ec", border: "1.5px solid #e5e0d8" }}
+                  style={{ background: "#F8FAFC", border: "1.5px solid #E2E8F0" }}
                 >
                   <div
                     className="w-6 h-6 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
-                    style={{ background: "var(--green-primary)" }}
+                    style={{ background: "#2d7a3a" }}
                   >
                     {user.name.charAt(0).toUpperCase()}
                   </div>

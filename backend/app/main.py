@@ -12,6 +12,7 @@ from app.database.db import create_tables
 from app.services.evaluator import train_all_models
 from app.routes import grocery, prediction, optimization, comparison
 from app.routes import insights, sustainability, auth as auth_routes
+from app.routes import catalog, coins, datasets
 from app.utils.limiter import limiter
 
 logging.basicConfig(level=logging.INFO)
@@ -88,6 +89,9 @@ app.include_router(optimization.router,   prefix="/api", tags=["Optimization"])
 app.include_router(comparison.router,     prefix="/api", tags=["Comparison"])
 app.include_router(insights.router,       prefix="/api", tags=["Insights"])
 app.include_router(sustainability.router, prefix="/api", tags=["Sustainability"])
+app.include_router(catalog.router,        prefix="/api", tags=["Catalog"])
+app.include_router(coins.router,          prefix="/api", tags=["GreenCoins"])
+app.include_router(datasets.router,       prefix="/api", tags=["Datasets"])
 
 
 @app.get("/", tags=["Health"])

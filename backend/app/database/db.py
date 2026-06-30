@@ -36,6 +36,17 @@ class PurchaseRecord(Base):
     purchase_date = Column(String, nullable=False)
 
 
+class GreenCoinRecord(Base):
+    __tablename__ = "green_coins"
+
+    id         = Column(Integer, primary_key=True, index=True)
+    user_id    = Column(Integer, default=1, index=True)
+    amount     = Column(Integer, nullable=False)
+    action     = Column(String, nullable=False)
+    item       = Column(String, nullable=False)
+    created_at = Column(String, nullable=False)
+
+
 def create_tables():
     Base.metadata.create_all(bind=engine)
 

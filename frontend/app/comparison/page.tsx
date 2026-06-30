@@ -1,8 +1,11 @@
 "use client";
-import { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { api, ComparisonResult, ConfusionMatrix } from "@/services/api";
 import { BarChartComponent, RadarChartComponent } from "@/components/Chart";
-import { BarChart2, Trophy, TrendingDown, TrendingUp, RefreshCw, AlertTriangle } from "lucide-react";
+import { BarChart2, Trophy, TrendingDown, TrendingUp, RefreshCw, AlertTriangle, Award, Target, Zap } from "lucide-react";
+import AIEnginePanel, { ModelCardData } from "@/components/AIEnginePanel";
+import DatasetCard from "@/components/DatasetCard";
+import { api as apiClient, DatasetStat } from "@/services/api";
 import { BRAND_COLORS } from "@/lib/constants";
 
 function MetricCard({ label, legacy, modern, higherIsBetter = true }: {
@@ -91,8 +94,23 @@ function FeatureImportanceBar({ name, score }: { name: string; score: number }) 
   );
 }
 
+function WinnerCard({ icon: Icon, label, value, color }: { icon: React.ElementType; label: string; value: string; color: string }) {
+  return (
+    <div className="bg-white rounded-xl p-4 flex items-center gap-3" style={{ border: "1.5px solid #e5e0d8" }}>
+      <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${color}`}>
+        <Icon className="w-4 h-4 text-white" />
+      </div>
+      <div>
+        <p className="text-xs text-gray-500 font-medium">{label}</p>
+        <p className="text-sm font-bold text-gray-800">{value}</p>
+      </div>
+    </div>
+  );
+}
+
 export default function ComparisonPage() {
   const [data, setData] = useState<ComparisonResult | null>(null);
+  const [datasets, setDatasets] = useState<DatasetStat[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -100,8 +118,12 @@ export default function ComparisonPage() {
     setLoading(true);
     setError("");
     try {
-      const result = await api.compareModels();
+      const [result, dsStats] = await Promise.all([
+        api.compareModels(),
+        apiClient.getDatasetStats().catch(() => []),
+      ]);
       setData(result);
+      setDatasets(dsStats);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Failed to load comparison");
     } finally {
@@ -351,6 +373,44 @@ export default function ComparisonPage() {
           </tbody>
         </table>
       </div>
+
+      {/* Quick winner summary */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <WinnerCard icon={Award}  label="Best R² (Demand)"   value={`${dp.modern.name} — ${(dp.modern.r2 ?? 0).toFixed(3)}`}  color="bg-green-500" />
+        <WinnerCard icon={Target} label="Best AUC (Waste)"   value={`${wp.modern.name} — ${(wp.modern.roc_auc ?? 0).toFixed(3)}`} color="bg-blue-500" />
+        <WinnerCard icon={Zap}    label="Best F1 (Waste)"    value={`${wp.modern.name} — ${(wp.modern.f1 ?? 0).toFixed(3)}`}  color="bg-purple-500" />
+      </div>
+
+      {/* Training datasets */}
+      {datasets.length > 0 && (
+        <div>
+          <p className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Training Datasets</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {datasets.map((ds) => (
+              <DatasetCard key={ds.name} ds={ds} />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* AI Engine Panel */}
+      <AIEnginePanel
+        title="AI Engine — All Models"
+        models={[
+          { name: "XGBoost", algorithm: "Gradient Boosted Trees", role: "Demand (Primary)",
+            metrics: { "R²": (dp.modern.r2 ?? 0).toFixed(3), "MAE": (dp.modern.mae ?? 0).toFixed(3) },
+            features: data.demand_prediction.features_count, dataset: "Grocery Purchases", inference_ms: "~8ms", modelKey: "xgboost" },
+          { name: dp.legacy.name, algorithm: "Ridge Regression", role: "Demand (Baseline)",
+            metrics: { "R²": (dp.legacy.r2 ?? 0).toFixed(3), "MAE": (dp.legacy.mae ?? 0).toFixed(3) },
+            features: data.demand_prediction.features_count, dataset: "Grocery Purchases", inference_ms: "<2ms", modelKey: "ridge" },
+          { name: wp.modern.name, algorithm: "Attention Neural Net", role: "Waste (Primary)",
+            metrics: { "Accuracy": `${((wp.modern.accuracy ?? 0)*100).toFixed(0)}%`, "AUC": (wp.modern.roc_auc ?? 0).toFixed(3) },
+            features: data.waste_prediction.features_count, dataset: "Food Waste + Perishable", inference_ms: "~15ms", modelKey: "tabnet" },
+          { name: wp.legacy.name, algorithm: "Logistic Regression", role: "Waste (Baseline)",
+            metrics: { "Accuracy": `${((wp.legacy.accuracy ?? 0)*100).toFixed(0)}%`, "AUC": (wp.legacy.roc_auc ?? 0).toFixed(3) },
+            features: data.waste_prediction.features_count, dataset: "Food Waste Records", inference_ms: "<2ms", modelKey: "logistic" },
+        ] as ModelCardData[]}
+      />
     </div>
   );
 }
