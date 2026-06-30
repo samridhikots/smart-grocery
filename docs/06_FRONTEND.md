@@ -51,10 +51,10 @@ frontend/
     └── constants.ts        ← Item lists, category colors, constants
 ```
 
-**Framework:** Next.js 14 with App Router  
+**Framework:** Next.js 16 with App Router  
 **Language:** TypeScript (strict mode)  
 **Styling:** Tailwind CSS 3  
-**Charts:** Recharts 2  
+**Charts:** Recharts 3  
 **Icons:** Lucide React  
 **HTTP Client:** Native `fetch` with typed wrappers
 
@@ -120,38 +120,50 @@ No API calls — fully static.
 ### Dashboard (`app/dashboard/page.tsx`)
 
 **Type:** Client Component  
-**APIs called:** `GET /api/purchases` (200 records), `GET /api/predict-waste`  
-**Auth:** Uses `useAuth()` for user name and `user.monthly_budget` for the budget bar.
+**APIs called:** `GET /api/purchases` (200 records), `GET /api/predict-waste`, `GET /api/predict-demand`  
+**Auth:** Uses `useAuth()` for user name and `user.monthly_budget` for score calculation.
 
-**Sections:**
+**Mediora-inspired layout:**
 
-1. **Header** — `"{user.firstName}'s household overview"` personalised subtitle
+#### Top row — `grid grid-cols-12 gap-4`
 
-2. **Stats Row (4 cards)**
-   - Total purchases recorded
-   - Total amount spent (₹)
-   - High-waste risk item count
-   - Average freshness score (1 − waste_probability_tabnet)
+1. **Grocery Score card (col-span-5)** — dark gradient card
+   - `ScoreGauge` SVG: 270° arc, lime green `#84BD00` fill, `rotate(135)` transform
+   - Background: `linear-gradient(145deg, #152b06, #1e4509, #2a5f10)`
+   - `MetricBar` rows for Budget Health, Freshness Score, Waste Prevention
+   - Bottom chips: items tracked + days left in month
+   - Score formula:
+     - `budgetScore = max(0, 100 − (currentMonthSpend / budget) × 50)`
+     - `freshnessScore = avgConf × 100` (avg confidence from waste predictions)
+     - `wasteScore = (non-high-risk / total waste items) × 100`
+     - `overallScore = budgetScore × 0.35 + freshnessScore × 0.40 + wasteScore × 0.25`
 
-3. **Monthly Budget Progress Bar (`BudgetBar` component)**
-   - Current month spend vs `user.monthly_budget` from onboarding
-   - Colour: green (< 70%), yellow (70–90%), red (> 90%)
-   - Shows "₹X left" or "₹X over" badge
+2. **Smart Alerts card (col-span-4)** — `AlertRow` components
+   - Combines High waste-risk items + demand items with `days_until_next ≤ 3`
+   - Each row: colored severity dot + title + subtitle
 
-4. **Charts Row (2 charts)**
-   - Bar chart: Spending by category
-   - Bar chart: Waste risk distribution (High / Medium / Low counts)
+3. **Active Goals card (col-span-3)** — `GoalCard` components
+   - Budget goal: current vs monthly_budget with progress bar
+   - Freshness goal: avg freshness %
+   - Waste-free goal: % of non-high-risk items
 
-5. **Month-over-Month Spend Trend (LineChartComponent)**
-   - Groups all purchases by `purchase_date.slice(0, 7)` (YYYY-MM)
-   - Sorted chronologically; rendered only when ≥ 2 months of data exist
-   - Green line, title "Month-over-Month Spend Trend"
+#### Bottom section — single `.card` with pill tab bar
 
-6. **Tables Row (2 tables)**
-   - Recent purchases (last 10, with category color badge)
-   - Waste risk alerts (filtered to non-Low risk items)
+Pill tab bar (4 tabs):
+- **Recent Purchases** — last 8 purchases table with category badge
+- **Waste Risk** — waste items table with risk badge + probability
+- **Shopping List** — demand predictions sorted by urgency
+- **Spending Trends** — BarChart (by category) + LineChart (month-over-month)
 
-**Refresh button:** Re-fetches both APIs and updates all charts/tables.
+Tab bar styling: `bg="#F1F5F9"` container, active tab = `bg-white shadow-sm text-gray-900`.
+
+**Key inline components (defined in dashboard/page.tsx):**
+- `ScoreGauge({ score })` — SVG gauge, 270° arc
+- `MetricBar({ label, value, color })` — mini label + progress bar
+- `AlertRow({ icon, title, subtitle, color })` — single alert row
+- `GoalCard({ label, value, target, unit })` — goal progress row
+
+**Refresh button:** Re-fetches all 3 APIs.
 
 ---
 
@@ -226,12 +238,37 @@ function explainDemand(pred: DemandPrediction): ReasonBadge[] {
 #### Budget Tab
 
 - Form inputs: Budget (₹), Household size, Category filter toggles
-- "Optimize" button triggers `POST /api/optimize-budget`
+- "Optimize" button triggers `POST /api/optimize-budget` (auth required — JWT auto-injected)
 - Results:
-  - 4 stat cards (total spent, savings, items count, optimization score)
-  - **WhatsApp Share** button — opens `https://wa.me/?text=` with a formatted list
-  - **Copy list** button — copies text to clipboard with 2-second "Copied!" feedback
-  - Sorted shopping list table
+  - **Budget overview card:** contextual message ("You're over budget" / "You have ₹X left"), budget utilization bar, Copy + WhatsApp share buttons
+  - **Priority shopping list:** numbered rows with urgency badge (Buy today / This week / Later), perishable tag, partial note, cost
+  - **Deferred to Next Trip section:** items that didn't fit in budget, dashed border card, shows days-until-needed per item
+- Uses extended response fields: `total_needed`, `is_over_budget`, `budget_gap`, `deferred_items`, per-item `urgency_label`, `days_until_next`, `is_perishable`, `status`, `note`
+
+---
+
+### Insights (`app/insights/page.tsx`)
+
+**Type:** Client Component  
+**APIs called:** `GET /api/insights`, `GET /api/overspending`  
+**Auth:** Requires Bearer token.
+
+**Mediora-inspired layout:**
+
+1. **Top row — 4 `InsightStat` icon-based stat cards:**
+   - Critical Alerts count, High Priority count, Total Insights, Spending Status verdict
+   - Each card: `w-10 h-10 rounded-xl` icon container + big number below label
+
+2. **Two-column section:**
+   - **Left (7/12): Top Actions** — top 3 non-low-severity insights, each as a white `.card` with small colored severity dot
+   - **Right (5/12): Spending Overview** — 3 mini stats (monthly spend / 3-month avg / overspend) + verdict badge
+
+3. **Pill tab bar + tab content:**
+   - Tabs: All | Stock | Waste | Budget
+   - `tabContent` record pre-filters insights by type + keyword matching on title
+   - SpendingHistory chart (12-month line with anomaly dots) appears only in Budget tab
+
+**InsightCard:** Clean white `.card` with colored severity dot (SEVERITY_CFG), expandable ChevronDown for raw data fields. Replaced old `border-l-4` + colored-background style.
 
 ---
 
@@ -596,14 +633,18 @@ These constants are shared across all pages and components for consistency.
 
 ### Color Palette
 
-| Color | Usage | Tailwind class |
-|-------|-------|----------------|
-| Green (primary) | CTAs, active states, positive metrics | `green-600` |
+| Color | Usage | Value |
+|-------|-------|-------|
+| Green (primary) | CTAs, active states, positive metrics | `green-600` (#16a34a) |
+| BigBasket lime green | Gauge fill, score highlights | `#84BD00` |
+| Dark green text | Text on lime green backgrounds | `#1C4A00` |
 | Amber | Legacy model, warning states | `amber-500` |
 | Red | High risk, error states | `red-500` |
 | Blue | Dairy category, info states | `blue-500` |
 | Purple | Modern model indicators, optimization score | `purple-600` |
 | Gray | Background, borders, secondary text | `gray-50`–`gray-700` |
+| Dashboard score card | Dark gradient background | `linear-gradient(145deg, #152b06, #1e4509, #2a5f10)` |
+| Pill tab container | Tab bar background | `#F1F5F9` |
 
 ### Responsive Breakpoints
 
@@ -732,10 +773,18 @@ export interface WasteAlert {
   risk_level: "High" | "Medium" | "Low",
   days_until_expiry, shelf_life_days, recommendation, is_perishable,
 }
-export interface OptimizedItem { item, category, quantity, unit_price, total_cost,
-  priority_score, nutrition_score }
-export interface OptimizationResult { total_cost, budget, savings, optimization_score,
-  items_count, items: OptimizedItem[] }
+export interface OptimizedItem {
+  item: string; category: string; quantity: number; unit_price: number;
+  total_cost: number; priority_score: number; nutrition_score: number;
+  days_until_next?: number; urgency_label?: string; is_perishable?: boolean;
+  status?: "included" | "partial" | "deferred"; note?: string;
+}
+export interface OptimizationResult {
+  total_cost: number; total_needed?: number; budget: number; savings: number;
+  budget_gap?: number; is_over_budget?: boolean; optimization_score: number;
+  items_count: number; total_items_needed?: number;
+  items: OptimizedItem[]; deferred_items?: OptimizedItem[]; currency: string;
+}
 
 // Comparison types
 export interface ComparisonResult {

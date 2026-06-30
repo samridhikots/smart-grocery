@@ -409,13 +409,13 @@ Results are sorted by `waste_probability_tabnet` descending (highest risk first)
 
 ## 7. POST /api/optimize-budget
 
-Generate an optimized shopping list for a given budget.
+Generate a personalized budget-optimized shopping list based on the user's actual purchase history. **Requires Bearer token.**
 
 **Request Body:**
 
 ```json
 {
-  "budget": 80.0,
+  "budget": 2000.0,
   "household_size": 4,
   "preferred_categories": ["Vegetables", "Fruits", "Dairy", "Protein"]
 }
@@ -423,7 +423,7 @@ Generate an optimized shopping list for a given budget.
 
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
-| `budget` | float | Yes | — | Total budget in dollars (> 0) |
+| `budget` | float | Yes | — | Total budget in ₹ (> 0) |
 | `household_size` | int | No | 3 | Household size (1–10) |
 | `preferred_categories` | array | No | null | Filter to these categories only. Pass `null` or omit for all categories |
 
@@ -431,29 +431,60 @@ Generate an optimized shopping list for a given budget.
 
 ```json
 {
-  "total_cost": 78.92,
-  "budget": 80.0,
-  "savings": 1.08,
-  "optimization_score": 0.946,
-  "items_count": 13,
+  "total_cost": 1820.0,
+  "total_needed": 2400.0,
+  "budget": 2000.0,
+  "savings": 180.0,
+  "budget_gap": 400.0,
+  "is_over_budget": true,
+  "optimization_score": 0.82,
+  "items_count": 8,
+  "total_items_needed": 12,
+  "currency": "INR",
   "items": [
     {
-      "item": "Chicken",
-      "category": "Protein",
-      "quantity": 1.33,
-      "unit_price": 8.0,
-      "total_cost": 10.64,
+      "item": "Spinach",
+      "category": "Vegetables",
+      "quantity": 1.0,
+      "unit_price": 30.0,
+      "total_cost": 30.0,
       "priority_score": 9,
-      "nutrition_score": 8.45
+      "nutrition_score": 8.2,
+      "days_until_next": 2,
+      "urgency_label": "Buy today",
+      "is_perishable": true,
+      "status": "included",
+      "note": null
     },
     {
-      "item": "Tomato",
-      "category": "Vegetables",
+      "item": "Milk",
+      "category": "Dairy",
       "quantity": 2.0,
-      "unit_price": 2.5,
-      "total_cost": 5.0,
+      "unit_price": 60.0,
+      "total_cost": 120.0,
       "priority_score": 8,
-      "nutrition_score": 8.34
+      "nutrition_score": 8.8,
+      "days_until_next": 3,
+      "urgency_label": "This week",
+      "is_perishable": true,
+      "status": "included",
+      "note": null
+    }
+  ],
+  "deferred_items": [
+    {
+      "item": "Rice",
+      "category": "Grains",
+      "quantity": 5.0,
+      "unit_price": 80.0,
+      "total_cost": 400.0,
+      "priority_score": 7,
+      "nutrition_score": 7.5,
+      "days_until_next": 14,
+      "urgency_label": "Later",
+      "is_perishable": false,
+      "status": "deferred",
+      "note": "Deferred — over budget"
     }
   ]
 }
@@ -463,15 +494,33 @@ Generate an optimized shopping list for a given budget.
 
 | Field | Description |
 |-------|-------------|
-| `total_cost` | Actual total cost of selected items |
-| `savings` | `budget - total_cost` — unspent amount |
+| `total_cost` | Actual cost of selected (included/partial) items |
+| `total_needed` | Total cost if all candidate items were purchased (including deferred) |
+| `budget` | The budget passed in the request |
+| `savings` | `budget - total_cost` — unspent amount (0 if over budget) |
+| `budget_gap` | `max(0, total_needed - budget)` — how much more is needed |
+| `is_over_budget` | `true` when `total_needed > budget` |
 | `optimization_score` | Value delivered / max possible value (0.0–1.0) |
-| `items_count` | Number of items in the list |
-| `items` | Shopping list sorted by category |
+| `items_count` | Number of selected items |
+| `total_items_needed` | Total candidate count (selected + deferred) |
+| `items` | Items that fit within the budget, sorted by urgency |
+| `deferred_items` | Items that couldn't fit, sorted by urgency |
+| `currency` | Always `"INR"` |
 
-**Note on `optimization_score`:**  
-`1.0 = perfect` (maximum possible priority × nutrition per dollar within budget).  
-Typically > 0.90 for reasonable budgets.
+**Per-item fields (in both `items` and `deferred_items`):**
+
+| Field | Description |
+|-------|-------------|
+| `days_until_next` | Estimated days until item is needed (from purchase history) |
+| `urgency_label` | `"Buy today"` (≤2 days) / `"This week"` (3–7 days) / `"Later"` (>7 days) |
+| `is_perishable` | `true` for items with short shelf life |
+| `status` | `"included"` / `"partial"` / `"deferred"` |
+| `note` | Reason string for partial/deferred items, `null` for included |
+
+**Note on fallback:** If the authenticated user has 0 purchase records, falls back to catalog-based optimization (same response shape, `deferred_items=[]`, `is_over_budget=false`).
+
+**Error: 401 Unauthorized** — Missing or invalid Bearer token.  
+**Error: 503** — Models not yet initialized.
 
 ---
 

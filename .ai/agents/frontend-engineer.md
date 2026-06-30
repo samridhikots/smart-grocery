@@ -2,7 +2,7 @@
 
 ## Identity
 
-You are a **Senior Frontend Engineer** specialising in Next.js 14 App Router, TypeScript, Tailwind CSS, and React state management patterns. You built every page, component, and hook in the SmartGrocery frontend. You can answer questions about routing, auth flow, API integration, component design, styling patterns, form handling, chart rendering, and UX decisions — in full detail.
+You are a **Senior Frontend Engineer** specialising in Next.js 16 App Router, TypeScript, Tailwind CSS, and React state management patterns. You built every page, component, and hook in the SmartGrocery frontend. You can answer questions about routing, auth flow, API integration, component design, styling patterns, form handling, chart rendering, and UX decisions — in full detail.
 
 ---
 
@@ -10,10 +10,10 @@ You are a **Senior Frontend Engineer** specialising in Next.js 14 App Router, Ty
 
 | Technology | Version / Notes |
 |-----------|-----------------|
-| Next.js | 14, App Router (`app/` directory), `"use client"` for interactive pages |
+| Next.js | 16, App Router (`app/` directory), `"use client"` for interactive pages |
 | TypeScript | Strict mode |
 | Tailwind CSS | 3, utility-first, custom component classes in `globals.css` |
-| Recharts | 2, used for BarChart, LineChart, RadarChart |
+| Recharts | 3, used for BarChart, LineChart, RadarChart |
 | Lucide React | Icon library |
 | HTTP client | Native `fetch` wrapped in typed `api.ts` |
 | Auth | JWT stored in `localStorage` under key `sg_token` |
@@ -144,23 +144,59 @@ api.compareModels()                       // GET /api/compare-models
 
 **Empty state** (0 purchases): Full-screen hero with 3-step progress dots and a single CTA. Locked stat cards at opacity-50 with "Unlocks with data" badge.
 
-**With-data state:**
-1. Greeting + date header
-2. **"⚡ Today's top actions"** card — merges waste alerts (High/Medium) AND demand items (days_until_next ≤ 2) into a single prioritised list (max 3). Always visible when items exist.
-3. Stats row: BudgetBar | Waste Risk count | Freshness %
-4. Two-column tables: Recent Purchases (last 6) | Items at Waste Risk
-5. Collapsed "Spending Trends" toggle → BarChart (by category) + BarChart (waste risk distribution) + LineChart (monthly trend)
+**With-data state — Mediora-inspired layout:**
 
-**Key components:**
-- `BudgetBar` — current month spend vs `user.monthly_budget`, colour-coded green/yellow/red
-- `StatCard` — reusable icon + value + subtitle card
+#### Top row: `grid grid-cols-12 gap-4`
+
+**Grocery Score card (col-span-5)** — Dark gradient card (`linear-gradient(145deg, #152b06 0%, #1e4509 50%, #2a5f10 100%)`):
+- `ScoreGauge` SVG: 270° arc, lime green `#84BD00` fill, `rotate(135)` transform, radius 52
+- `MetricBar` rows: Budget Health / Freshness Score / Waste Prevention (each with label + mini progress bar)
+- Bottom row: 2 stat chips (items tracked / days left in month)
+- Score formula: `budgetScore * 0.35 + freshnessScore * 0.40 + wasteScore * 0.25`
+  - `budgetScore = max(0, 100 - (currentMonthSpend / budget) * 50)`
+  - `freshnessScore = avgConf * 100` (avg confidence from waste predictions)
+  - `wasteScore = (non-high-risk items / total waste items) * 100`
+
+**Smart Alerts card (col-span-4)** — White card with `AlertRow` items:
+- Combines waste alerts (High risk) + demand items (days_until_next ≤ 3)
+- Each row: colored dot + title + subtitle + "Act" badge
+
+**Active Goals card (col-span-3)** — White card with `GoalCard` items:
+- Budget goal: progress bar + "₹X left"
+- Freshness goal: percentage
+- Waste-free goal: percentage
+
+#### Bottom section: single `.card` with pill tab bar + tab content
+
+**Pill tab bar pattern:**
+```tsx
+const TAB_DEFS = [
+  { key: "purchases", label: "Recent Purchases", Icon: ShoppingCart },
+  { key: "waste",     label: "Waste Risk",       Icon: AlertTriangle },
+  { key: "demand",    label: "Shopping List",    Icon: Package },
+  { key: "trends",    label: "Spending Trends",  Icon: BarChart2 },
+];
+// Container: bg="#F1F5F9" rounded-xl p-1; active tab: bg-white shadow-sm text-gray-900
+```
+
+**Tab content:**
+- `purchases`: table of recent purchases (last 8) with category badge
+- `waste`: waste risk items with risk badge, probability, recommendation
+- `demand`: demand predictions sorted by urgency (days_until_next)
+- `trends`: BarChart (spend by category) + LineChart (month-over-month)
+
+**Key local components (defined inline in dashboard/page.tsx):**
+- `ScoreGauge({ score })` — SVG circular gauge, 270° arc, `#84BD00` fill
+- `MetricBar({ label, value, color })` — label + `w-full bg-gray-700 rounded` bar
+- `AlertRow({ icon, title, subtitle, color })` — single alert row
+- `GoalCard({ label, value, target, unit })` — goal progress row
 
 ---
 
 ### Add Purchase (`app/add/page.tsx`)
 
 **APIs:** `getPurchases(200)`, `addPurchase()`  
-**Note:** Uses `Suspense` wrapper because inner component calls `useSearchParams()` (Next.js 14 requirement).
+**Note:** Uses `Suspense` wrapper because inner component calls `useSearchParams()` (Next.js App Router requirement).
 
 **ProgressStrip component:**
 ```typescript
@@ -196,7 +232,20 @@ const UNLOCK_MILESTONES = [
 
 **Optimise Budget tab:**
 - Budget, household size, category filter inputs
-- Share list via Copy or WhatsApp button
+- "Optimize" button triggers `POST /api/optimize-budget` (requires auth — JWT auto-injected)
+- **Budget overview card:** contextual message (over/under budget), utilization progress bar, Copy + WhatsApp share buttons
+- **Priority shopping list:** numbered rows with urgency badge (Buy today / This week / Later), perishable tag, partial note, cost per item
+- **Deferred to Next Trip section:** items that didn't fit in budget, shown with days-until-needed, dashed border card
+- Uses new fields: `total_needed`, `is_over_budget`, `budget_gap`, `deferred_items`, `urgency_label`, `days_until_next`, `is_perishable`, `status`, `note`
+
+**IIFE pattern used for budget results:**
+```tsx
+{budget && (() => {
+  const totalNeeded = budget.total_needed ?? budget.total_cost;
+  const isOver = budget.is_over_budget ?? false;
+  const deferred = budget.deferred_items ?? [];
+  return (<>...</>);
+})()}
 
 ---
 
@@ -204,15 +253,49 @@ const UNLOCK_MILESTONES = [
 
 **APIs:** `getInsights()`, `getOverspending()`
 
-**Layout:**
-1. Summary cards at top: Critical count | High count | Total | Spending status
-2. "⚡ Your top N actions today" — top 3 non-low insights, deduped from grouped sections
-3. Overspending analysis: 3 metric cards + 12-month line chart with anomaly dots
-4. Grouped sections: Stock Alerts | Waste Alerts | Budget | Other
+**Layout — Mediora-inspired:**
 
-**InsightCard:** Expandable with ChevronDown — shows raw data fields on expand.
+#### Top row: 4 `InsightStat` icon-based stat cards
+```tsx
+function InsightStat({ Icon, label, value, iconBg, valueColor }) {
+  return (
+    <div className="card flex items-start gap-3">
+      <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${iconBg}`}>
+        <Icon className="w-5 h-5" />
+      </div>
+      <div>
+        <p className="text-xs font-bold uppercase tracking-widest text-gray-400">{label}</p>
+        <p className={`text-2xl font-bold mt-0.5 tabular-nums ${valueColor}`}>{value}</p>
+      </div>
+    </div>
+  );
+}
+```
+Cards: Critical Alerts | High Priority | Total Insights | Spending Status
 
-**Anomaly dots** on spending chart: Red circle + "!" label for months flagged as anomalies.
+#### Two-column section (col-span-7 + col-span-5)
+- **Left (7/12): Top Actions** — top 3 non-low insights as white cards with colored dot (SEVERITY_CFG)
+- **Right (5/12): Spending Overview** — 3 mini stats (monthly spend, avg 3-month, overspend amount) + verdict badge
+
+#### Pill tab bar + tab content
+```typescript
+type InsightTab = "all" | "stock" | "waste" | "budget";
+const tabContent: Record<InsightTab, Insight[]> = {
+  all:    insights,
+  stock:  insights.filter(i => i.type === "demand" || title includes "stock"/"running"),
+  waste:  insights.filter(i => i.type === "waste" || title includes "waste"/"spoil"),
+  budget: insights.filter(i => i.type === "budget"/"anomaly" || title includes "spend"/"budget"),
+};
+```
+
+**InsightCard redesign:** Clean white `.card` with:
+- Small colored dot (not `border-l-4` + colored background)
+- `SEVERITY_CFG` mapping: `{ critical: { dot: "bg-red-500", ... }, high: { dot: "bg-orange-500", ... }, ... }`
+- Expand button (ChevronDown) still present for raw data fields
+
+**SpendingHistory chart:** Moved to Budget tab only (`{activeTab === "budget" && ...}`), not a standalone section.
+
+**Removed from old layout:** `categoryFilter` state, `groupPages` state, `allGroups`/`visibleGroups` logic, standalone overspending section, filter chips, `SEVERITY_STYLES` (replaced by `SEVERITY_CFG`).
 
 ---
 
@@ -278,9 +361,13 @@ Custom utility classes defined in `@layer components`:
 
 **Color palette:**
 - Brand green: `green-600` (#16a34a)
+- BigBasket lime green: `#84BD00` — used for gauge fill, score highlights
+- Dark text on lime: `#1C4A00` — contrast safe on BigBasket green
 - Background: `gray-50` on `body`, `white` for cards
 - Danger: `red-500` / `red-50` + `red-700`
 - Warning: `orange-400` / `yellow-400`
+- Dashboard score card background: `linear-gradient(145deg, #152b06 0%, #1e4509 50%, #2a5f10 100%)`
+- Pill tab bar container: `#F1F5F9`
 
 ---
 
@@ -311,6 +398,20 @@ interface WasteAlert {
   waste_probability_tabnet: number; waste_probability_logistic: number;
   risk_level: "High" | "Medium" | "Low";
   days_until_expiry: number; recommendation: string;
+}
+
+interface OptimizedItem {
+  item: string; category: string; quantity: number; unit_price: number;
+  total_cost: number; priority_score: number; nutrition_score: number;
+  days_until_next?: number; urgency_label?: string; is_perishable?: boolean;
+  status?: "included" | "partial" | "deferred"; note?: string;
+}
+
+interface OptimizationResult {
+  total_cost: number; total_needed?: number; budget: number; savings: number;
+  budget_gap?: number; is_over_budget?: boolean; optimization_score: number;
+  items_count: number; total_items_needed?: number;
+  items: OptimizedItem[]; deferred_items?: OptimizedItem[]; currency: string;
 }
 
 interface Insight {
@@ -391,10 +492,10 @@ npx tsc --noEmit # type check only (no output)
 
 ## Skills
 
-- Next.js 14 App Router patterns (layouts, client components, Suspense, useSearchParams)
+- Next.js 16 App Router patterns (layouts, client components, Suspense, useSearchParams)
 - TypeScript strict mode: interfaces, generics, discriminated unions
 - Tailwind CSS: utility classes, custom components, responsive design
-- Recharts: BarChart, LineChart, custom dots, tooltips
+- Recharts 3: BarChart, LineChart, RadarChart, custom dots, tooltips
 - React state management: useState, useCallback, useEffect, useContext, useRef
 - Form design with autocomplete and pre-fill patterns
 - Modal/overlay patterns (inline modal vs navigate-away)

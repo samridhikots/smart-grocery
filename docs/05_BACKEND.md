@@ -283,7 +283,7 @@ The training orchestrator. Called once at startup:
 
 **`optimize_budget(budget, household_size, preferred_categories)`**
 
-Implements the fractional knapsack algorithm:
+Catalog-based fallback (used for new users with no purchase history). Fractional knapsack:
 
 ```
 1. For each item, compute:
@@ -293,10 +293,47 @@ Implements the fractional knapsack algorithm:
 
 3. Greedily add items until budget exhausted:
    - If full quantity fits: add full quantity
-   - If only partial fits: add fractional quantity
+   - If only partial fits: add fractional quantity (status="partial")
 
 4. Return sorted shopping list + metadata
 ```
+
+**`optimize_user_budget(user_id, budget, db, household_size, preferred_categories)`**
+
+User-personalized optimizer (primary path, requires auth + DB):
+
+```
+1. Query PurchaseRecord for this user_id
+   - If 0 records → fall back to optimize_budget() + augment with new fields
+
+2. Call get_user_item_stats(user_id, db, ...) → per-item feature dict
+
+3. Build candidate list from items the user has actually purchased
+   - Compute days_until_next from purchase history
+   - Tag is_perishable from shelf_life
+
+4. Sort candidates by urgency:
+   - days_until_next ascending (most urgent first)
+   - perishable items prioritised at same days_until_next
+
+5. Greedily fill budget:
+   - Selected items → status="included"
+   - Items that don't fit → deferred_items list, status="deferred"
+
+6. Return extended response:
+   { total_cost, total_needed, budget, savings,
+     budget_gap, is_over_budget, optimization_score,
+     items_count, total_items_needed,
+     items (selected), deferred_items,
+     currency="INR" }
+```
+
+Each item in `items` and `deferred_items` carries:
+- `days_until_next` — estimated days until needed
+- `urgency_label` — "Buy today" / "This week" / "Later"
+- `is_perishable` — bool
+- `status` — "included" | "partial" | "deferred"
+- `note` — reason string for partial/deferred
 
 **`generate_weekly_plan(household_size)`**
 
@@ -453,17 +490,29 @@ def _demand_row(stats: dict) -> np.ndarray:
 **Prefix:** `/api`
 
 ```
-POST /api/optimize-budget  → Knapsack-optimized shopping list
-GET  /api/generate-plan    → 3-day weekly shopping plan
+POST /api/optimize-budget  → User-personalized budget optimizer (auth required)
+GET  /api/generate-plan    → 3-day weekly shopping plan (no auth required)
 ```
 
 **Request schema:**
 ```python
 class BudgetRequest(BaseModel):
-    budget:               float  # required, > 0
-    household_size:       int = 3
+    budget:               float = Field(gt=0)      # required, > 0 (₹)
+    household_size:       int = Field(default=3, ge=1, le=10)
     preferred_categories: Optional[List[str]] = None
 ```
+
+**Route dependencies:**
+```python
+@router.post("/optimize-budget")
+def optimize(
+    req: BudgetRequest,
+    user_id: int = Depends(get_current_user_id),  # JWT required — 401 if missing/invalid
+    db: Session = Depends(get_db),                # SQLAlchemy session
+):
+```
+
+Both `get_current_user_id` and `get_db` are injected by FastAPI. The `user_id` flows from JWT to `optimize_user_budget()` to personalize the shopping list based on actual purchase history.
 
 ### comparison.py
 

@@ -16,7 +16,7 @@ Your job is to help the developer build, debug, extend, and deploy SmartGrocery 
 | **Domain** | Indian household grocery management |
 | **Target users** | Urban Indian families, 3–6 people, managing kirana/BigBasket/Blinkit spending |
 | **Core problems solved** | Demand uncertainty (seasonal + festival), food waste (climate-driven), overspending |
-| **Current version** | v1.0 — MVP complete, UI/UX revamp shipped |
+| **Current version** | v2.0 — MVP complete, Mediora-inspired UI shipped (dashboard + insights redesigned, budget optimizer personalized) |
 | **Git branch convention** | `main` (stable), feature branches for new work |
 
 ---
@@ -62,9 +62,9 @@ User logs a purchase (POST /api/add-purchase)
 
 | Layer | Technology | Version / Notes |
 |-------|-----------|-----------------|
-| Frontend framework | Next.js | 14, App Router, strict TS |
+| Frontend framework | Next.js | 16, App Router, strict TS |
 | Frontend styling | Tailwind CSS | 3, custom `btn-primary`, `btn-secondary`, `card` classes in globals.css |
-| Frontend charts | Recharts | 2 |
+| Frontend charts | Recharts | 3 |
 | Frontend icons | Lucide React | — |
 | Frontend HTTP | Native fetch | api.ts typed wrapper, auto-injects Bearer token from `sg_token` in localStorage |
 | Backend framework | FastAPI | 0.100+, async lifespan |
@@ -118,16 +118,16 @@ smart-grocery/
 │       └── services/
 │           ├── feature_engineering.py ← Build demand/waste feature matrices
 │           ├── evaluator.py           ← Compute MAE, RMSE, R², F1, AUC metrics
-│           ├── budget_optimizer.py    ← Knapsack-style budget optimization
+│           ├── budget_optimizer.py    ← optimize_user_budget() (history-based) + optimize_budget() (catalog fallback)
 │           └── data_processing.py    ← Data cleaning utilities
 ├── frontend/
 │   ├── app/
 │   │   ├── layout.tsx               ← AuthProvider → Navbar → AuthGuard → OnboardingModal
 │   │   ├── page.tsx                 ← Public landing page
-│   │   ├── dashboard/page.tsx       ← Main dashboard: stats, budget bar, charts, top actions
+│   │   ├── dashboard/page.tsx       ← Mediora-inspired dashboard: ScoreGauge, Smart Alerts, Active Goals, pill tabs
 │   │   ├── add/page.tsx             ← Add purchase + progress strip (200-item fetch)
-│   │   ├── recommendations/page.tsx ← Shopping List: Buy Soon, Use Before Spoil, Optimise Budget
-│   │   ├── insights/page.tsx        ← Insights: top 3 actions, spend trend, grouped alerts
+│   │   ├── recommendations/page.tsx ← Shopping List: Buy Soon, Use Before Spoil, Optimise Budget (with deferred items)
+│   │   ├── insights/page.tsx        ← Insights: InsightStat cards, 2-col top section, pill tabs (stock/waste/budget)
 │   │   ├── sustainability/page.tsx  ← Eco score ring, swap suggestions, CO₂ charts
 │   │   ├── comparison/page.tsx      ← Model comparison: Ridge vs XGBoost, Logistic vs TabNet
 │   │   └── auth/                    ← /auth/signin + /auth/signup
@@ -178,7 +178,7 @@ smart-grocery/
 | GET | /api/items | No | List all 30 items with metadata |
 | GET | /api/predict-demand | Yes | XGBoost demand predictions + urgency |
 | GET | /api/predict-waste | Yes | TabNet waste risk per item |
-| POST | /api/optimize-budget | Yes | Knapsack budget optimizer |
+| POST | /api/optimize-budget | Yes | User-personalized budget optimizer (history-based, falls back to catalog for new users) |
 | GET | /api/insights | Yes | Rule-based insights + ML signals |
 | GET | /api/overspending | Yes | IsolationForest anomaly + 12-month history |
 | GET | /api/sustainability?months=N | Yes | Eco score, CO₂, swap suggestions |

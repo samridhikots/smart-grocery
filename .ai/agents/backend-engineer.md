@@ -202,16 +202,80 @@ if not model_store.get("xgboost"):
 
 ### `routes/optimization.py`
 
-**POST `/api/optimize-budget`** — Knapsack-style budget optimizer.
+**POST `/api/optimize-budget`** — User-personalized budget optimizer. **Requires Bearer token.**
 
 ```python
-class OptimizeRequest(BaseModel):
-    budget: float         # max spend in ₹
-    household_size: int   # 1–10
-    categories: list[str] | None = None  # optional filter
+class BudgetRequest(BaseModel):
+    budget: float = Field(gt=0)           # max spend in ₹
+    household_size: int = Field(default=3, ge=1, le=10)
+    preferred_categories: Optional[List[str]] = None
+
+@router.post("/optimize-budget")
+def optimize(
+    req: BudgetRequest,
+    user_id: int = Depends(get_current_user_id),   # auth required
+    db: Session = Depends(get_db),                 # DB session required
+):
+    result = optimize_user_budget(
+        user_id=user_id, budget=req.budget, db=db,
+        household_size=req.household_size,
+        preferred_categories=req.preferred_categories,
+    )
+    return result
 ```
 
-Uses `services/budget_optimizer.py` which scores items by priority (nutrition × demand × freshness) and greedily packs them within the budget constraint.
+Uses `services/budget_optimizer.optimize_user_budget()` which queries the user's actual purchase history and sorts candidates by urgency (days_until_next + perishability), filling the budget greedily. Items that don't fit are returned as `deferred_items`.
+
+**Response shape:**
+```json
+{
+  "total_cost": 1820.0,
+  "total_needed": 2400.0,
+  "budget": 2000.0,
+  "savings": 180.0,
+  "budget_gap": 400.0,
+  "is_over_budget": true,
+  "optimization_score": 0.82,
+  "items_count": 8,
+  "total_items_needed": 12,
+  "currency": "INR",
+  "items": [
+    {
+      "item": "Spinach", "category": "Vegetables",
+      "quantity": 1.0, "unit_price": 30.0, "total_cost": 30.0,
+      "priority_score": 9, "nutrition_score": 8.2,
+      "days_until_next": 2, "urgency_label": "Buy today",
+      "is_perishable": true, "status": "included", "note": null
+    }
+  ],
+  "deferred_items": [
+    {
+      "item": "Rice", "category": "Grains",
+      "quantity": 5.0, "unit_price": 80.0, "total_cost": 400.0,
+      "priority_score": 7, "nutrition_score": 7.5,
+      "days_until_next": 14, "urgency_label": "Later",
+      "is_perishable": false, "status": "deferred", "note": "Deferred — over budget"
+    }
+  ]
+}
+```
+
+**New response fields vs old:**
+
+| Field | Description |
+|-------|-------------|
+| `total_needed` | Sum of all candidate items (including deferred) |
+| `budget_gap` | `max(0, total_needed - budget)` |
+| `is_over_budget` | True when total_needed > budget |
+| `total_items_needed` | Total candidate count (selected + deferred) |
+| `deferred_items` | Items that couldn't fit in budget, sorted by urgency |
+| `urgency_label` | Human-readable: "Buy today" / "This week" / "Later" |
+| `days_until_next` | Days until item is needed (from purchase history) |
+| `is_perishable` | True for short-shelf-life items |
+| `status` | `"included"` / `"partial"` / `"deferred"` |
+| `note` | Reason string for partial/deferred items |
+
+**Fallback for new users (0 purchases):** calls the catalog-based `optimize_budget()` function and augments its response with the new fields (deferred_items=[], is_over_budget=False, etc.).
 
 ---
 
@@ -296,7 +360,18 @@ build_waste_features(user_purchases: pd.DataFrame, datasets: dict) -> (X, items)
 
 ### `services/budget_optimizer.py`
 
-Greedy knapsack: items are sorted by `priority_score = (nutrition_score × 0.4 + demand_weight × 0.4 + freshness × 0.2)`, packed into budget greedily. No true dynamic programming — intentional simplicity at demo scale.
+Two public functions:
+
+**`optimize_budget(budget, household_size, preferred_categories)`** — Catalog-based fallback (used for new users with no purchase history). Greedy knapsack: items sorted by `value_density = (priority_score × nutrition_score) / unit_price`.
+
+**`optimize_user_budget(user_id, budget, db, household_size, preferred_categories)`** — User-personalized optimizer (primary path). Algorithm:
+1. Queries `PurchaseRecord` for the user's actual purchase history
+2. If 0 records → delegates to `optimize_budget()` with fallback field augmentation
+3. Calls `get_user_item_stats(user_id, db, ...)` to build per-item feature dict
+4. Constructs candidate list from items the user has actually purchased
+5. Sorts candidates by urgency: `days_until_next` ascending, perishables first
+6. Greedily fills budget; items that don't fit → `deferred_items`
+7. Returns extended response with `total_needed`, `budget_gap`, `is_over_budget`, `deferred_items`, `urgency_label`, `is_perishable`, `status`, `note` per item
 
 ### `services/evaluator.py`
 
