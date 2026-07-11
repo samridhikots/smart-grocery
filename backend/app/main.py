@@ -9,6 +9,7 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
 from app.database.db import create_tables
+from app.database.seed import seed_demo_data
 from app.services.evaluator import train_all_models
 from app.routes import grocery, prediction, optimization, comparison
 from app.routes import insights, sustainability, auth as auth_routes
@@ -43,6 +44,7 @@ def _background_init():
 async def lifespan(app: FastAPI):
     logger.info("=== Smart Grocery System (India) — Startup ===")
     create_tables()
+    seed_demo_data()
 
     # Run data generation and model training in the background so the port
     # binds immediately (required for Render's port-scan health check).
@@ -54,7 +56,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Smart Grocery Management System — India",
+    title="Smart Grocery Management System",
     description=(
         "AI-powered grocery management for Indian households. "
         "Demand prediction, waste reduction, overspending detection, "
