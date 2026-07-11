@@ -57,21 +57,24 @@ export default function Home() {
   return (
     <div className="space-y-20">
 
+
       {/* Hero */}
       <section className="text-center py-14 animate-fade-in">
+        <div className="bg-[url('/background.jpg')] bg-cover bg-center px-10 py-24">
         <div
           className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-sm font-semibold mb-6"
           style={{ background: "var(--green-light)", color: "var(--green-primary)", border: "1.5px solid #b8e0c0" }}
         >
           <ShoppingCart className="w-4 h-4" /> Built for Indian households
         </div>
-        <h1 className="text-5xl sm:text-6xl font-bold text-white mb-5 leading-tight tracking-tight">
+        <h1 className="text-5xl sm:text-6xl font-bold text-white mb-5 leading-tight tracking-tight flex flex-col items-center">
           Save money.
-          <span className="block" style={{ color: "var(--green-primary)" }}>
+          <span className="block" style={{ color: "var(--green-primary)", background: "var(--green-light)"}}>
             Reduce waste. Shop smarter.
           </span>
         </h1>
-        <p className="text-lg text-gray-400 max-w-xl mx-auto mb-10 leading-relaxed">
+        <p className="inline-flex items-center gap-2 px-4 py-1.5 text-sm font-semibold mb-6 mt-2"
+          style={{ background: "var(--green-light)", color: "gray", border: "1.5px solid #b8e0c0" }}>
           SmartGrocery uses 7 AI models to predict what you need, warn you about spoilage,
           and keep your ₹ grocery budget on track.
         </p>
@@ -82,6 +85,7 @@ export default function Home() {
           <Link href="/auth/signin" className="btn-secondary text-base px-7 py-3">
             Sign in
           </Link>
+        </div>
         </div>
       </section>
 
@@ -195,7 +199,6 @@ export default function Home() {
           Create your account <ArrowRight className="w-4 h-4" />
         </Link>
       </section>
-
     </div>
   );
 }

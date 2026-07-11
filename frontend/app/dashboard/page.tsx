@@ -380,7 +380,7 @@ export default function Dashboard() {
         {/* Grocery Score — dark card */}
         <div
           className="col-span-12 lg:col-span-5 rounded-2xl p-5 flex flex-col gap-4"
-          style={{ background: "linear-gradient(145deg, #152b06 0%, #1e4509 50%, #2a5f10 100%)" }}
+          style={{ background: "linear-gradient(145deg, #3f7b18 0%, #317a0a 50%, #2b6e09 100%)" }}
         >
           <div className="flex items-start justify-between">
             <div>
